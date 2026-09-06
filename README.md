@@ -51,11 +51,19 @@ Women's 10km Interval Start Classic — Ruka (FIN) 2024-11-29
 pool=distance  starters=12  sims=20000
 
   #  Athlete                    Nat     Elo     Win  Podium   Top10  ERank
--------------------------------------------------------------------------
-  1  KARLSSON Frida             SWE    1580   28.9%   62.1%   96.4%    3.4
-  2  JOHAUG Therese             NOR    1553   24.1%   57.0%   95.8%    3.8
-...
+--------------------------------------------------------------------------
+  1  KARLSSON Frida             SWE    1530   9.8%   29.2%   88.0%    6.0
+  2  JOHAUG Therese             NOR    1525   9.8%   28.2%   87.0%    6.1
+  3  SLIND Astrid Oeyre         NOR    1519   9.2%   27.7%   86.6%    6.1
+  4  HENNIG Katharina           GER    1514   8.7%   26.3%   85.5%    6.3
+  5  WENG Heidi                 NOR    1508   8.8%   25.8%   84.7%    6.4
+  6  ANDERSSON Ebba             SWE    1503   8.5%   25.4%   84.1%    6.5
 ```
+
+That sample is generated from the single race in `tests/fixtures/`, which is
+why the ratings are nearly flat and the win probabilities nearly uniform — one
+race of history barely separates anyone. Scrape a few seasons and the spread
+becomes real.
 
 `xcpredict backtest` replays every stored race in order, predicting each one
 from ratings fitted only on earlier races, and reports pairwise accuracy, log
