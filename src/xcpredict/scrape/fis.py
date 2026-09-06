@@ -133,6 +133,28 @@ def classify_title(title: str) -> Dict[str, object]:
             "start_type": start_type, "length_km": length_km, "is_team": is_team}
 
 
+# A FIS event page links its cumulative standings alongside the races that
+# produced them -- "Men's Overall Standings" for a Tour de Ski, say. Those pages
+# parse perfectly well as results, which is the danger: a standings order is the
+# aggregate of a whole tour, so storing one as a race feeds Elo a single
+# head-to-head event that silently encodes six. Every athlete would be credited
+# with beating everyone below them one extra time, weighted as though it were
+# one more race.
+STANDINGS_TOKENS = ("standings", "overall standing", "cup standing",
+                    "final standing", "total standing")
+
+
+def is_standings(title: Optional[str]) -> bool:
+    """Is this a cumulative standings page rather than a single race?
+
+    Deliberately narrower than "drop anything with 'cup' in it": real races are
+    titled inside cup series all the time, and a title match on "cup" would
+    take live races with it.
+    """
+    low = (title or "").lower()
+    return any(token in low for token in STANDINGS_TOKENS)
+
+
 def _header_text(soup: BeautifulSoup, selector: str) -> Optional[str]:
     node = soup.select_one(selector)
     return node.get_text(" ", strip=True) if node else None
@@ -307,7 +329,14 @@ def crawl_race(fetcher: Fetcher, race_id: str, season: Optional[int] = None,
     if html is None:
         log.warning("race %s: 404", race_id)
         return None
-    return parse_race_page(html, race_id, season=season, event_id=event_id)
+    entries = parse_race_page(html, race_id, season=season, event_id=event_id)
+    # Filtered here rather than in crawl_season so that a direct crawl_race()
+    # call is protected too.
+    if is_standings(entries.race.title):
+        log.info("race %s: skipping %r, a standings page not a race",
+                 race_id, entries.race.title)
+        return None
+    return entries
 
 
 def crawl_season(fetcher: Fetcher, season: int, force: bool = False) -> Iterator[RaceEntries]:

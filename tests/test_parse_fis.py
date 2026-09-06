@@ -101,3 +101,56 @@ def test_index_page_parsers():
 def test_urls():
     assert "seasoncode=2026" in fis.calendar_url(2026)
     assert fis.race_url("46733").endswith("raceid=46733")
+
+
+# --- standings pages are not races -----------------------------------------
+
+@pytest.mark.parametrize("title", [
+    "Men's Overall Standings",
+    "Women's Overall Standings",
+    "Overall Standings",
+    "World Cup Standings",
+    "Final Standings",
+])
+def test_standings_titles_are_recognised(title):
+    assert fis.is_standings(title)
+
+
+@pytest.mark.parametrize("title", [
+    "Women's 10km Interval Start Classic",
+    "Men's Sprint Final Classic",
+    "Men's 4x7.5km Relay Classic/Free",
+    "Women's Skiathlon 7.5km Classic + 7.5km Free",
+    # The series name carries "World Cup" on plenty of ordinary races, which is
+    # why the filter matches "standings" and not "cup".
+    "Men's 15km Mass Start Free",
+])
+def test_real_races_are_not_mistaken_for_standings(title):
+    assert not fis.is_standings(title)
+
+
+def test_standings_are_not_yielded_by_crawl_race(monkeypatch):
+    """A standings page parses fine as a result, which is exactly the danger.
+
+    Found in the wild: raceids 41582/41583, "Men's/Women's Overall Standings"
+    for the 2023 Tour de Ski, were stored as races. A standings order is a
+    cumulative tour result, so feeding it to Elo counts the whole tour again as
+    one head-to-head event.
+    """
+    class FakeFetcher:
+        def get_optional(self, url, force=False):
+            return ("<div class='event-header__kind'>Men's Overall Standings</div>"
+                    "<div class='event-header__name'><h1>Val di Fiemme</h1></div>")
+
+    assert fis.crawl_race(FakeFetcher(), "41583", season=2023) is None
+
+
+def test_an_ordinary_race_still_crawls(monkeypatch):
+    class FakeFetcher:
+        def get_optional(self, url, force=False):
+            return ("<div class='event-header__kind'>Men's 15km Mass Start Free</div>"
+                    "<div class='event-header__name'><h1>Val di Fiemme</h1></div>")
+
+    entries = fis.crawl_race(FakeFetcher(), "41590", season=2023)
+    assert entries is not None
+    assert entries.race.title == "Men's 15km Mass Start Free"
