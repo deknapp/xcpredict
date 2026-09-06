@@ -143,40 +143,83 @@ def cmd_predict(args) -> int:
 
 # --------------------------------------------------------------------- parser
 
+#: Applied after parsing rather than as argparse defaults — see _common_options.
+GLOBAL_DEFAULTS = {
+    "db": str(db.DEFAULT_DB),
+    "cache": "data/cache",
+    "no_cache": False,
+    "delay": 1.0,
+    "verbose": False,
+}
+
+
+def _common_options() -> argparse.ArgumentParser:
+    """Options accepted either before or after the subcommand.
+
+    Every option here uses SUPPRESS, so an unused subparser copy cannot
+    overwrite a value the top-level parser already stored, and the real
+    defaults are filled in by _apply_defaults() after parsing.
+
+    They must not be given real defaults via `parser.set_defaults()`:
+    `parents=` shares the *same* action objects between the top-level parser
+    and every subparser, and set_defaults() mutates `action.default` in place,
+    which would clear SUPPRESS everywhere and make the subparser copy clobber
+    the top-level value.
+    """
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--db", default=argparse.SUPPRESS,
+                        help=f"SQLite path (default: {db.DEFAULT_DB})")
+    common.add_argument("--cache", default=argparse.SUPPRESS,
+                        help="HTTP cache directory (default: data/cache)")
+    common.add_argument("--no-cache", action="store_true", default=argparse.SUPPRESS,
+                        help="bypass the HTTP cache")
+    common.add_argument("--delay", type=float, default=argparse.SUPPRESS,
+                        help="seconds between requests to fis-ski.com (default: 1.0)")
+    common.add_argument("-v", "--verbose", action="store_true",
+                        default=argparse.SUPPRESS)
+    return common
+
+
+def _apply_defaults(args: argparse.Namespace) -> argparse.Namespace:
+    for key, value in GLOBAL_DEFAULTS.items():
+        if not hasattr(args, key):
+            setattr(args, key, value)
+    return args
+
+
+def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    return _apply_defaults(build_parser().parse_args(argv))
+
+
 def build_parser() -> argparse.ArgumentParser:
+    common = _common_options()
     parser = argparse.ArgumentParser(prog="xcpredict", description=__doc__,
+                                     parents=[common],
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--db", default=str(db.DEFAULT_DB), help="SQLite path")
-    parser.add_argument("--cache", default="data/cache", help="HTTP cache directory")
-    parser.add_argument("--no-cache", action="store_true", help="bypass the HTTP cache")
-    parser.add_argument("--delay", type=float, default=1.0,
-                        help="seconds between requests to fis-ski.com")
-    parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    scrape = sub.add_parser("scrape", help="fetch pages from fis-ski.com")
+    scrape = sub.add_parser("scrape", help="fetch pages from fis-ski.com", parents=[common])
     scrape_sub = scrape.add_subparsers(dest="what", required=True)
 
-    season = scrape_sub.add_parser("season", help="a whole World Cup season")
+    season = scrape_sub.add_parser("season", help="a whole World Cup season", parents=[common])
     season.add_argument("seasons", nargs="+", type=int,
                         help="FIS season codes, e.g. 2025 for the 2024/25 winter")
     season.add_argument("--force", action="store_true", help="re-fetch cached pages")
     season.set_defaults(func=cmd_scrape_season)
 
-    race = scrape_sub.add_parser("race", help="individual races by FIS raceid")
+    race = scrape_sub.add_parser("race", help="individual races by FIS raceid", parents=[common])
     race.add_argument("race_ids", nargs="+")
     race.add_argument("--season", type=int, default=None)
     race.add_argument("--force", action="store_true")
     race.set_defaults(func=cmd_scrape_race)
 
-    startlist = sub.add_parser("startlist", help="refresh and show a race's start list")
+    startlist = sub.add_parser("startlist", help="refresh and show a race's start list", parents=[common])
     startlist.add_argument("race_id")
     startlist.add_argument("--offline", action="store_true",
                            help="read what is already stored, do not fetch")
-    startlist.add_argument("--force", action="store_true")
     startlist.set_defaults(func=cmd_startlist)
 
-    rate = sub.add_parser("rate", help="fit and store Elo ratings")
+    rate = sub.add_parser("rate", help="fit and store Elo ratings", parents=[common])
     rate.add_argument("--k", type=float, default=24.0)
     rate.add_argument("--half-life", type=float, default=540.0,
                       help="days for an idle rating to decay halfway to the mean")
@@ -184,12 +227,12 @@ def build_parser() -> argparse.ArgumentParser:
     rate.add_argument("--min-races", type=int, default=5)
     rate.set_defaults(func=cmd_rate)
 
-    backtest = sub.add_parser("backtest", help="walk-forward evaluation")
+    backtest = sub.add_parser("backtest", help="walk-forward evaluation", parents=[common])
     backtest.add_argument("--k", type=float, default=24.0)
     backtest.add_argument("--half-life", type=float, default=540.0)
     backtest.set_defaults(func=cmd_backtest)
 
-    predict = sub.add_parser("predict", help="simulate a race from its start list")
+    predict = sub.add_parser("predict", help="simulate a race from its start list", parents=[common])
     predict.add_argument("race_id")
     predict.add_argument("--sims", type=int, default=20000)
     predict.add_argument("--spread", type=float, default=1.0,
@@ -204,7 +247,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    args = build_parser().parse_args(argv)
+    args = parse_args(argv)
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,
                         format="%(levelname)s %(message)s")
     return args.func(args)
