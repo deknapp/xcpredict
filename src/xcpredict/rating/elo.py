@@ -25,13 +25,31 @@ SCALE = 400.0
 
 @dataclass
 class EloConfig:
-    k_base: float = 24.0
+    #: Because `update_race` normalises the summed surprise by the number of
+    #: opponents, `k_base` is not the usual per-game Elo constant: it is the
+    #: most a rating can move in one race, when an athlete beats the entire
+    #: field. Read that way, 24 was far too conservative -- a 60-skier race is
+    #: 1,770 head-to-head comparisons, and it was being allowed to say about as
+    #: much as a single chess game. Tuned against walk-forward pairwise log
+    #: loss over 297 races: 24 -> 0.5438, 200 -> 0.4660.
+    k_base: float = 200.0
     #: Provisional athletes move faster until they have this many races.
     provisional_races: int = 10
+    #: NOTE: now *below* k_base, which inverts what it is for -- see the module
+    #: docstring. Left alone rather than guessed at; it needs its own sweep.
     k_provisional: float = 60.0
     #: Ratings decay toward the mean while an athlete is not racing, so a
     #: skier who has been out for two seasons is not still rated on old form.
-    half_life_days: float = 540.0
+    #:
+    #: Five years, which is close to no decay at all on the record we have, and
+    #: that is deliberate. Every shorter half-life scores worse on every metric
+    #: (at k=200: 365d -> 0.4876, 1825d -> 0.4699, no decay -> 0.4660), but the
+    #: record is only about three and a half seasons long, so a half-life near
+    #: the length of the window cannot be distinguished from switching decay
+    #: off. Reading that as "decay is harmful" would be fitting the shortness
+    #: of the dataset. The mechanism is kept, set long enough to cost almost
+    #: nothing now, and should be re-tuned once there are more seasons.
+    half_life_days: float = 1825.0
     default_rating: float = DEFAULT_RATING
 
 

@@ -220,16 +220,16 @@ def build_parser() -> argparse.ArgumentParser:
     startlist.set_defaults(func=cmd_startlist)
 
     rate = sub.add_parser("rate", help="fit and store Elo ratings", parents=[common])
-    rate.add_argument("--k", type=float, default=24.0)
-    rate.add_argument("--half-life", type=float, default=540.0,
+    rate.add_argument("--k", type=float, default=200.0)
+    rate.add_argument("--half-life", type=float, default=1825.0,
                       help="days for an idle rating to decay halfway to the mean")
     rate.add_argument("--top", type=int, default=20)
     rate.add_argument("--min-races", type=int, default=5)
     rate.set_defaults(func=cmd_rate)
 
     backtest = sub.add_parser("backtest", help="walk-forward evaluation", parents=[common])
-    backtest.add_argument("--k", type=float, default=24.0)
-    backtest.add_argument("--half-life", type=float, default=540.0)
+    backtest.add_argument("--k", type=float, default=200.0)
+    backtest.add_argument("--half-life", type=float, default=1825.0)
     backtest.set_defaults(func=cmd_backtest)
 
     predict = sub.add_parser("predict", help="simulate a race from its start list", parents=[common])
@@ -238,7 +238,7 @@ def build_parser() -> argparse.ArgumentParser:
     predict.add_argument("--spread", type=float, default=1.0,
                          help=">1 makes the race more random")
     predict.add_argument("--pool", choices=["sprint", "distance"], default=None)
-    predict.add_argument("--half-life", type=float, default=540.0)
+    predict.add_argument("--half-life", type=float, default=1825.0)
     predict.add_argument("--top", type=int, default=15)
     predict.add_argument("--seed", type=int, default=None)
     predict.set_defaults(func=cmd_predict)

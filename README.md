@@ -16,10 +16,44 @@ FIS calendar → events → race pages → SQLite → Elo ratings
 
 ## Status
 
-Working scaffold. The scraper, store, rating model, simulator, backtest and CLI
-are implemented and tested against a real FIS page. See
+Working, and backtested on real data. The scraper, store, rating model,
+simulator, backtest and CLI are implemented and tested. See
 [Verifying the start-list path](#verifying-the-start-list-path) for the one
 piece that cannot be confirmed until the season starts.
+
+**Backtest, 2023–2026 World Cup: 346 races, 23,320 results, 1,388 athletes.**
+Every race is predicted from ratings fitted only on races that happened before
+it, 297 scored:
+
+| metric | value |
+|---|---|
+| pairwise accuracy | 0.800 |
+| pairwise log loss | 0.4699 |
+| mean rank correlation | 0.758 |
+| winner in predicted top 3 | 0.576 |
+
+`k` and the decay half-life were swept against pairwise log loss, and the
+result says something about the model rather than just picking a number.
+Because a race's summed surprise is normalised by the size of the field, `k` is
+not the usual per-game Elo constant — it is the most a rating can move in one
+race. Read that way the old default of 24 was far too conservative: a 60-skier
+race is 1,770 head-to-head comparisons and was being allowed to say about as
+much as one chess game. Raising it to 200 takes log loss from 0.5438 to 0.4699.
+
+The half-life is the more interesting result, because the honest answer is
+that it cannot be fitted yet. Every shorter half-life scores worse on every
+metric, all the way down to switching decay off entirely — but the record is
+only about three and a half seasons, so any half-life near the length of the
+window is indistinguishable from no decay. Concluding "decay is harmful" would
+be fitting the shortness of the dataset, not the sport. The default is five
+years: long enough to cost almost nothing today, while keeping the mechanism
+for the athlete who really has been out since 2023. It should be re-tuned when
+there are more seasons.
+
+One caveat on all four numbers: `k` was selected against this same walk-forward
+series. Each individual race is predicted out-of-sample, but the hyperparameter
+is not, so treat these as the model's ceiling rather than as a clean held-out
+estimate.
 
 ## Install
 
