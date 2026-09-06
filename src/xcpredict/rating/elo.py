@@ -171,9 +171,21 @@ class EloModel:
 
 
 def pool_for(race) -> str:
-    """Rating pool a race belongs to. `race` is a Race or a sqlite Row."""
-    kind = race["kind"] if hasattr(race, "keys") else race.kind
-    return kind or "distance"
+    """Rating pool a race belongs to. `race` is a Race or a sqlite Row.
+
+    Gender is part of the pool, not just discipline. Men and women never start
+    together, so every pairwise comparison Elo ever makes is within one gender
+    and the two rating graphs are disconnected -- both anchored at 1500 and
+    otherwise unrelated. Pooling them produced one ranked table with Johaug
+    above Klaebo, which reads as a comparison the data cannot make and never
+    made. Splitting the pool changes no comparison the model performs; it stops
+    the output implying one that it doesn't.
+    """
+    if hasattr(race, "keys"):
+        kind, gender = race["kind"], race["gender"]
+    else:
+        kind, gender = race.kind, race.gender
+    return f"{gender or '?'}-{kind or 'distance'}"
 
 
 def fit(conn, config: Optional[EloConfig] = None,

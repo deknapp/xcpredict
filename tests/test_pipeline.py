@@ -34,7 +34,10 @@ def test_rate_then_predict_the_stored_start_list(conn):
     reloaded = elo.load(conn)
     assert len(reloaded.ratings) == 12
 
-    starters = predict_mod.starters_from_db(conn, "46733", reloaded, "distance")
+    # Derived, not hardcoded: the pool is gendered ("W-distance" here) because
+    # men and women never race each other.
+    pool = elo.pool_for(db.get_race(conn, "46733"))
+    starters = predict_mod.starters_from_db(conn, "46733", reloaded, pool)
     prediction = predict_mod.simulate(starters, race_id="46733", n_sims=3000, seed=11)
 
     assert prediction.n_starters == 12
@@ -53,7 +56,8 @@ def test_prediction_never_includes_a_non_starter(conn):
                  f"({','.join('?' * len(keep))})", ["46733", *keep])
     conn.commit()
 
-    starters = predict_mod.starters_from_db(conn, "46733", elo.load(conn), "distance")
+    pool = elo.pool_for(db.get_race(conn, "46733"))
+    starters = predict_mod.starters_from_db(conn, "46733", elo.load(conn), pool)
     prediction = predict_mod.simulate(starters, n_sims=1000, seed=1)
     assert prediction.n_starters == 5
     assert {a.fis_code for a in prediction.athletes} == set(keep)

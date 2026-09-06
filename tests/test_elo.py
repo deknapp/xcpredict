@@ -54,3 +54,30 @@ def test_tiny_fields_are_ignored():
     model = EloModel()
     model.update_race([("a", 1), ("b", 2)], pool="distance", when=date(2025, 1, 1))
     assert model.ratings == {}
+
+
+def test_pool_is_gendered():
+    """Men and women never start together, so they are never comparable.
+
+    Every pairwise update Elo makes happens inside one race and therefore
+    inside one gender, which leaves the two rating graphs disconnected and both
+    anchored at 1500. Pooling them printed one ranked table with the best woman
+    above the best man -- a comparison the data cannot make and never made.
+    """
+    from xcpredict.rating import elo
+    from xcpredict.models import Race
+
+    women = Race(race_id="1", gender="W", kind="distance")
+    men = Race(race_id="2", gender="M", kind="distance")
+    sprint = Race(race_id="3", gender="W", kind="sprint")
+
+    assert elo.pool_for(women) != elo.pool_for(men)
+    assert elo.pool_for(women) != elo.pool_for(sprint)
+    assert elo.pool_for(women) == elo.pool_for(Race(race_id="4", gender="W", kind="distance"))
+
+
+def test_pool_survives_a_missing_gender():
+    from xcpredict.rating import elo
+    from xcpredict.models import Race
+
+    assert elo.pool_for(Race(race_id="5", gender=None, kind="distance"))

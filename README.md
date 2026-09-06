@@ -110,8 +110,9 @@ top three.
 are not comparable on time: a mass start is tactical, a sprint is heats, and
 course profile, altitude, snow and wax swing absolute times far more than form
 does. Finishing *order* is the one signal that means the same thing at every
-venue. Sprint and distance are rated in separate pools — they correlate, but
-not enough to merge. Idle ratings decay toward the mean on a half-life, so a
+venue. Ratings are pooled by gender and discipline — four pools. Sprint and
+distance correlate but not enough to merge, and men and women never start
+together, so every comparison the model makes is inside one gender already. Idle ratings decay toward the mean on a half-life, so a
 skier who has been out injured for two seasons is not still priced on old form.
 
 **Simulation is Plackett-Luce, tied to the ratings.** Each starter's
