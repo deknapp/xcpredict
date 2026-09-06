@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.DS_Store
+
+# scraped pages and the local database are rebuildable, keep them out
+data/
