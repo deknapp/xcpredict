@@ -14,6 +14,78 @@ FIS calendar → events → race pages → SQLite → Elo ratings
                         start list for race N ──→ Monte-Carlo → probabilities
 ```
 
+## The model
+
+Two models live here. The learned one is the point.
+
+### The learned ranker (`xcpredict train`)
+
+Elo gives every athlete a single number, and that is its central weakness: a
+sprinter and a 50 km specialist are not the same athlete, and pooling their
+results discards most of what those results say.
+
+So the model predicts an athlete in a race from what they have done in **races
+like that one**. Every past result is weighted against the target race:
+
+```
+weight = technique_similarity x kind_similarity x length_similarity x recency
+```
+
+A 10 km skate leans hardest on other 10 km skates, then 15 km skates, then
+10 km classics, and barely on sprints. Nothing is discarded — a sprint result
+is weak evidence about a 10 km, not zero evidence — and nothing is hard-coded:
+a 2 km prologue ends up near the sprints because its *length* is near theirs,
+not because a rule says so.
+
+Those weighted summaries become nine features, and a pairwise logistic ranker
+is fitted on every within-race pair by gradient descent. The whole model is
+nine numbers in [`data/model.json`](data/model.json) — small enough to read in
+a diff and to run in a browser.
+
+### What it actually scores
+
+Held out on the **2026 season, never seen in training** — 76 races, 225,590
+pairs:
+
+| method | pairwise accuracy |
+|---|---|
+| random | 0.4986 |
+| FIS points (the free alternative) | 0.6953 |
+| recent form, **no similarity kernel** | 0.7750 |
+| similarity kernel alone, **unfitted** | 0.8188 |
+| **learned ranker** | **0.8190** |
+
+Read that table downward, because the interesting result is not the top line.
+
+**The similarity kernel is what works.** Weighting history by technique,
+discipline and distance is worth **+4.4 points** over ignoring them
+(0.7750 → 0.8188). That is the whole thesis of the model and it holds up.
+
+**The learning on top is worth almost nothing** — 0.8188 to 0.8190. The
+features are strongly collinear, all of them measuring some version of "how
+good is this skier at this sort of race", so fitting weights over them cannot
+improve much on the best one alone. Increasing training from 300 to 8,000
+epochs changes nothing; it has converged. Reported because it is true, and
+because it says where the next gain is: better features, not a bigger model.
+
+### One trap worth documenting
+
+The first version of the FIS points baseline scored **0.9651** and appeared to
+demolish the model. It was cheating. `results.fis_points` holds the points
+*earned in that race* — the winner scores 0.0 and it rises monotonically with
+finishing position — so ordering by it is reading the answer. The baseline now
+uses the points an athlete carried in from earlier races, which is what someone
+consulting the FIS list before the start would have, and there is a regression
+test named for it.
+
+A baseline that cheats is worse than no baseline, because it makes a working
+model look useless.
+
+### The Elo model
+
+Still here, still tested, and no longer the headline. It is a useful reference
+point: no features, no context, one number per athlete.
+
 ## Status
 
 Working, and backtested on real data. The scraper, store, rating model,

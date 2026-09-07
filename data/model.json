@@ -1,0 +1,52 @@
+{
+  "kind": "pairwise_logistic_ranker",
+  "version": 1,
+  "feature_names": [
+    "similar_form",
+    "similar_best",
+    "overall_form",
+    "specificity",
+    "experience",
+    "recent_starts",
+    "fis_points",
+    "has_fis_points",
+    "consistency"
+  ],
+  "weights": [
+    0.537161,
+    0.311938,
+    0.477956,
+    0.235066,
+    0.513523,
+    -0.171055,
+    0.198883,
+    -0.02746,
+    0.045306
+  ],
+  "bias": 0.0,
+  "feature_mean": [
+    0.524443,
+    0.630537,
+    0.516983,
+    0.00746,
+    1.612721,
+    1.981934,
+    0.757604,
+    0.998776,
+    0.883734
+  ],
+  "feature_std": [
+    0.248384,
+    0.278118,
+    0.22272,
+    0.114742,
+    0.792848,
+    0.893345,
+    0.172412,
+    0.034969,
+    0.071226
+  ],
+  "trained_on_races": 221,
+  "trained_on_pairs": 131436,
+  "notes": "trained on seasons excluding [2026]"
+}

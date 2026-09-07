@@ -8,5 +8,12 @@ dist/
 .pytest_cache/
 .DS_Store
 
-# scraped pages and the local database are rebuildable, keep them out
-data/
+# Scraped pages and the local database are rebuildable and large, so they stay
+# out. The fitted model does not: it is nine numbers, it is the thing the
+# predictions actually come from, and a model you cannot read in a diff is a
+# model nobody can check.
+data/cache/
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
+!data/model.json

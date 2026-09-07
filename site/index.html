@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>xcpredict — World Cup race predictions</title>
+<style>
+  :root {
+    --bg:#f7f7f5; --panel:#fff; --ink:#16181d; --muted:#6b7280; --line:#e4e2dc;
+    --good:#15803d; --bad:#b91c1c; --accent:#1d4ed8; --radius:10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#101216; --panel:#181b21; --ink:#e8eaed; --muted:#9aa1ab;
+            --line:#272b33; --good:#4ade80; --bad:#f87171; --accent:#60a5fa; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }
+  .wrap { max-width:1040px; margin:0 auto; padding:36px 20px 80px; }
+  h1 { font-size:26px; margin:0 0 4px; letter-spacing:-.02em; }
+  .sub { color:var(--muted); margin:0 0 24px; max-width:66ch; }
+
+  .scoreboard { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+                margin-bottom:22px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+          padding:14px 16px; }
+  .stat .k { font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); }
+  .stat .v { font-size:24px; font-weight:700; letter-spacing:-.02em; margin-top:2px; }
+  .stat .n { font-size:12px; color:var(--muted); margin-top:2px; }
+
+  .controls { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px; }
+  select, input[type=search] {
+    padding:9px 11px; font-size:14px; border:1px solid var(--line);
+    border-radius:8px; background:var(--panel); color:var(--ink); font-family:inherit;
+  }
+  input[type=search] { flex:1; min-width:200px; }
+
+  .racelist { background:var(--panel); border:1px solid var(--line);
+              border-radius:var(--radius); max-height:290px; overflow-y:auto; }
+  .race { display:grid; grid-template-columns:88px 1fr auto; gap:10px; align-items:center;
+          padding:9px 14px; border-bottom:1px solid var(--line); cursor:pointer; font-size:13.5px; }
+  .race:last-child { border-bottom:0; }
+  .race:hover { background:rgba(125,125,125,.08); }
+  .race.on { background:rgba(29,78,216,.10); }
+  .race .d { color:var(--muted); font-variant-numeric:tabular-nums; }
+  .race .t { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .race .a { font-variant-numeric:tabular-nums; font-weight:600; }
+  .tag { font-size:10px; text-transform:uppercase; letter-spacing:.05em;
+         padding:1px 5px; border-radius:4px; border:1px solid var(--line); color:var(--muted); }
+
+  .result { margin-top:22px; background:var(--panel); border:1px solid var(--line);
+            border-radius:var(--radius); padding:20px 22px; }
+  .result h2 { margin:0 0 2px; font-size:18px; }
+  .result .meta { color:var(--muted); font-size:13px; margin-bottom:16px; }
+
+  table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em;
+       color:var(--muted); font-weight:600; padding:6px 8px 6px 0; border-bottom:1px solid var(--line); }
+  td { padding:6px 8px 6px 0; border-bottom:1px solid var(--line); }
+  tr:last-child td { border-bottom:0; }
+  .num { font-variant-numeric:tabular-nums; text-align:right; width:58px; }
+  .delta { font-variant-numeric:tabular-nums; text-align:right; width:64px; font-weight:600; }
+  .up { color:var(--good); } .down { color:var(--bad); } .same { color:var(--muted); }
+  .nat { color:var(--muted); font-size:12px; }
+
+  .empty { color:var(--muted); padding:26px 0; text-align:center; }
+  .note { margin-top:14px; padding-top:14px; border-top:1px solid var(--line);
+          font-size:12.5px; color:var(--muted); line-height:1.6; }
+  footer { margin-top:34px; font-size:13px; color:var(--muted); line-height:1.65; }
+  code { font-size:12px; background:rgba(125,125,125,.12); padding:1px 5px; border-radius:4px; }
+  .bar { height:6px; border-radius:3px; background:var(--line); overflow:hidden; margin-top:6px; }
+  .bar i { display:block; height:100%; background:var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>xcpredict</h1>
+  <p class="sub">Predicting FIS Cross-Country World Cup results from what each
+     skier has done in <em>races like this one</em> — same technique, similar
+     distance, recently. Pick any race below to see what the model would have
+     said before the start, next to what actually happened.</p>
+
+  <div class="scoreboard" id="scoreboard"></div>
+
+  <div class="controls">
+    <input type="search" id="q" placeholder="Search by place or title — Ruka, sprint, 10km…">
+    <select id="season"><option value="">All seasons</option></select>
+    <select id="gender">
+      <option value="">All</option><option value="M">Men</option><option value="W">Women</option>
+    </select>
+    <select id="kind">
+      <option value="">Sprint &amp; distance</option>
+      <option value="sprint">Sprint</option><option value="distance">Distance</option>
+    </select>
+  </div>
+
+  <div class="racelist" id="racelist"></div>
+  <div id="out"></div>
+
+  <footer>
+    <p><strong>How it works.</strong> Every past result is weighted by how much
+    it resembles the race being predicted — technique, sprint or distance,
+    distance in km, and how long ago. A 10&nbsp;km skate leans on other
+    10&nbsp;km skates, then 15&nbsp;km skates, then 10&nbsp;km classics, and
+    barely on sprints. Nothing is thrown away; the weights just differ. A small
+    ranking model is then fitted on those summaries.</p>
+    <p><strong>Nothing here uses the result it is predicting.</strong> A race's
+    prediction is built only from races that finished before it.
+    Seasons marked <span class="tag">held out</span> were excluded from
+    training entirely.</p>
+    <p>Source: <code>github.com/deknapp/xcpredict</code>. Data: FIS.</p>
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var index = null, races = [], model = null, baselines = null, current = null;
+
+  function el(id) { return document.getElementById(id); }
+  function pct(x) { return (x * 100).toFixed(1) + "%"; }
+
+  Promise.all([
+    fetch("data/index.json").then(function (r) { return r.json(); }),
+    fetch("data/model.json").then(function (r) { return r.json(); }),
+    fetch("data/baselines.json").then(function (r) { return r.json(); }).catch(function () { return null; })
+  ]).then(function (all) {
+    index = all[0]; model = all[1]; baselines = all[2];
+    races = index.races;
+    buildScoreboard();
+    buildSeasons();
+    render();
+  }).catch(function (e) {
+    el("racelist").innerHTML = '<div class="empty">Could not load data. ' +
+      'Run <code>xcpredict export</code> first.</div>';
+  });
+
+  // The model's accuracy is meaningless without what it had to beat, so the
+  // scoreboard shows them together rather than the headline number alone.
+  function buildScoreboard() {
+    if (!baselines) { return; }
+    var order = ["learned model", "similar_form (kernel, unfitted)",
+                 "recent_form (no kernel)", "fis_points", "random"];
+    var label = {
+      "learned model": "This model",
+      "similar_form (kernel, unfitted)": "Kernel alone",
+      "recent_form (no kernel)": "Form, no kernel",
+      "fis_points": "FIS points",
+      "random": "Random"
+    };
+    var note = {
+      "learned model": "held-out season",
+      "similar_form (kernel, unfitted)": "no learning",
+      "recent_form (no kernel)": "ignores discipline",
+      "fis_points": "the free alternative",
+      "random": "the floor"
+    };
+    var html = "";
+    order.forEach(function (key) {
+      var s = baselines[key];
+      if (!s || !s.pair_accuracy) { return; }
+      html += '<div class="stat"><div class="k">' + label[key] + "</div>" +
+              '<div class="v">' + pct(s.pair_accuracy) + "</div>" +
+              '<div class="n">' + note[key] + "</div>" +
+              '<div class="bar"><i style="width:' +
+              ((s.pair_accuracy - 0.45) / 0.55 * 100).toFixed(1) + '%"></i></div></div>';
+    });
+    el("scoreboard").innerHTML = html;
+  }
+
+  function buildSeasons() {
+    var seasons = {};
+    races.forEach(function (r) { if (r.season) { seasons[r.season] = 1; } });
+    Object.keys(seasons).sort().reverse().forEach(function (s) {
+      var o = document.createElement("option");
+      o.value = s; o.textContent = s;
+      el("season").appendChild(o);
+    });
+  }
+
+  function filtered() {
+    var q = el("q").value.trim().toLowerCase(),
+        season = el("season").value, gender = el("gender").value,
+        kind = el("kind").value;
+    return races.filter(function (r) {
+      if (season && String(r.season) !== season) { return false; }
+      if (gender && r.gender !== gender) { return false; }
+      if (kind && r.kind !== kind) { return false; }
+      if (q) {
+        var hay = ((r.place || "") + " " + (r.title || "")).toLowerCase();
+        if (hay.indexOf(q) === -1) { return false; }
+      }
+      return true;
+    });
+  }
+
+  function render() {
+    var list = filtered();
+    if (!list.length) {
+      el("racelist").innerHTML = '<div class="empty">No races match.</div>';
+      return;
+    }
+    el("racelist").innerHTML = list.slice(0, 400).map(function (r) {
+      return '<div class="race" data-id="' + r.race_id + '">' +
+        '<span class="d">' + (r.date || "") + "</span>" +
+        '<span class="t">' + (r.place || "") + " — " + (r.title || "") +
+          (r.held_out ? ' <span class="tag">held out</span>' : "") + "</span>" +
+        '<span class="a">' + (r.pair_accuracy != null ? pct(r.pair_accuracy) : "—") + "</span>" +
+      "</div>";
+    }).join("");
+
+    Array.prototype.forEach.call(document.querySelectorAll(".race"), function (node) {
+      node.addEventListener("click", function () { show(node.dataset.id); });
+    });
+  }
+
+  function show(raceId) {
+    Array.prototype.forEach.call(document.querySelectorAll(".race"), function (n) {
+      n.classList.toggle("on", n.dataset.id === raceId);
+    });
+    el("out").innerHTML = '<div class="result"><div class="empty">Loading…</div></div>';
+
+    fetch("data/races/" + raceId + ".json")
+      .then(function (r) { return r.json(); })
+      .then(function (race) { current = race; renderRace(race); })
+      .catch(function () {
+        el("out").innerHTML = '<div class="result"><div class="empty">' +
+          "Could not load that race.</div></div>";
+      });
+  }
+
+  function renderRace(race) {
+    var rows = race.athletes.map(function (a) {
+      var move = a.predicted - a.actual;   // positive => did better than predicted
+      var cls = move > 0 ? "up" : (move < 0 ? "down" : "same");
+      var arrow = move > 0 ? "+" + move : (move < 0 ? String(move) : "0");
+      return "<tr>" +
+        '<td class="num">' + a.predicted + "</td>" +
+        "<td>" + a.name + ' <span class="nat">' + (a.nation || "") + "</span></td>" +
+        '<td class="num">' + a.actual + "</td>" +
+        '<td class="delta ' + cls + '">' + arrow + "</td>" +
+      "</tr>";
+    }).join("");
+
+    var winner = race.winner_predicted_rank;
+    el("out").innerHTML =
+      '<div class="result">' +
+        "<h2>" + (race.place || "") + " — " + (race.title || "") + "</h2>" +
+        '<div class="meta">' + (race.date || "") + " · " + race.n_athletes +
+          " ranked starters · pairs correct " +
+          (race.pair_accuracy != null ? pct(race.pair_accuracy) : "—") +
+          (winner ? " · the actual winner was predicted " + ordinal(winner) : "") +
+          (race.held_out ? " · held out of training" : "") +
+        "</div>" +
+        "<table><thead><tr>" +
+          "<th class='num'>Pred</th><th>Skier</th>" +
+          "<th class='num'>Actual</th><th class='delta'>Diff</th>" +
+        "</tr></thead><tbody>" + rows + "</tbody></table>" +
+        '<div class="note">"Diff" is how many places better the skier finished ' +
+        "than predicted. Green beat the model, red fell short of it. The model " +
+        "never saw this race's result when making the prediction.</div>" +
+      "</div>";
+  }
+
+  function ordinal(n) {
+    var s = ["th", "st", "nd", "rd"], v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  }
+
+  ["q", "season", "gender", "kind"].forEach(function (id) {
+    el(id).addEventListener("input", render);
+    el(id).addEventListener("change", render);
+  });
+})();
+</script>
+</body>
+</html>

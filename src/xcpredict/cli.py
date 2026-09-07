@@ -6,6 +6,9 @@
     xcpredict backtest                  # walk-forward evaluation
     xcpredict startlist 47000           # refresh a start list, show who is in
     xcpredict predict 47000             # simulate that race's start list
+    xcpredict train                     # fit the learned ranker, save weights
+    xcpredict evaluate                  # model vs every baseline, held out
+    xcpredict export                    # freeze predictions for the web page
 """
 from __future__ import annotations
 
@@ -15,10 +18,15 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from . import db, evaluate, predict as predict_mod
+from . import baselines, db, dataset, evaluate, export as export_mod
+from . import ml, predict as predict_mod
 from .rating import elo
 from .scrape import fis
 from .scrape.http import Fetcher
+
+
+DEFAULT_MODEL = Path("data/model.json")
+DEFAULT_HOLDOUT = [2026]
 
 
 def _fetcher(args) -> Fetcher:
@@ -243,7 +251,96 @@ def build_parser() -> argparse.ArgumentParser:
     predict.add_argument("--seed", type=int, default=None)
     predict.set_defaults(func=cmd_predict)
 
+    train = sub.add_parser("train", help="fit the learned ranker", parents=[common])
+    train.add_argument("--model", default=str(DEFAULT_MODEL))
+    train.add_argument("--holdout", type=int, nargs="+", default=DEFAULT_HOLDOUT,
+                       metavar="SEASON",
+                       help="seasons kept out of training, for honest evaluation")
+    train.add_argument("--epochs", type=int, default=ml.DEFAULT_EPOCHS)
+    train.add_argument("--lr", type=float, default=ml.DEFAULT_LR)
+    train.set_defaults(func=cmd_train)
+
+    ev = sub.add_parser("evaluate", help="model against every baseline",
+                        parents=[common])
+    ev.add_argument("--model", default=str(DEFAULT_MODEL))
+    ev.add_argument("--holdout", type=int, nargs="+", default=DEFAULT_HOLDOUT,
+                    metavar="SEASON")
+    ev.set_defaults(func=cmd_evaluate)
+
+    ex = sub.add_parser("export", help="freeze predictions for the web page",
+                        parents=[common])
+    ex.add_argument("--model", default=str(DEFAULT_MODEL))
+    ex.add_argument("--out", default="site/data")
+    ex.add_argument("--holdout", type=int, nargs="+", default=DEFAULT_HOLDOUT,
+                    metavar="SEASON")
+    ex.set_defaults(func=cmd_export)
+
     return parser
+
+
+# ------------------------------------------------------- the learned ranker
+
+def _samples(args):
+    conn = db.connect(args.db)
+    samples = dataset.build_samples(conn)
+    if not samples:
+        raise SystemExit("No rateable races. Run `xcpredict scrape season ...` first.")
+    return conn, samples
+
+
+def cmd_train(args) -> int:
+    conn, samples = _samples(args)
+    train, test = dataset.split_by_season(samples, args.holdout)
+    if not train:
+        raise SystemExit(f"No training races outside seasons {args.holdout}.")
+
+    model = ml.fit(dataset.as_arrays(train), epochs=args.epochs, lr=args.lr,
+                   notes=f"trained on seasons excluding {sorted(args.holdout)}")
+    path = model.save(Path(args.model))
+
+    print(f"trained on {len(train)} races, {model.trained_on_pairs:,} pairs")
+    print(f"held out {len(test)} races from seasons {sorted(args.holdout)}")
+    print(f"saved {path}\n")
+    print("learned weights (largest influence first):")
+    for name, weight in model.explain():
+        print(f"   {name:22s} {weight:+.3f}")
+    return 0
+
+
+def cmd_evaluate(args) -> int:
+    conn, samples = _samples(args)
+    _, test = dataset.split_by_season(samples, args.holdout)
+    if not test:
+        raise SystemExit(f"No races in holdout seasons {args.holdout}.")
+
+    model = ml.RankerModel.load(Path(args.model))
+    table = baselines.compare(test, model_scorer=lambda s: model.score_many(s.features))
+
+    print(f"Held-out seasons {sorted(args.holdout)} - {len(test)} races\n")
+    print(baselines.format_comparison(table))
+    print("\nThe number that matters is the gap to the baselines, not the "
+          "number itself.")
+    return 0
+
+
+def cmd_export(args) -> int:
+    conn, samples = _samples(args)
+    model = ml.RankerModel.load(Path(args.model))
+    lookup = db.athlete_names(conn)
+    names = {code: value[0] for code, value in lookup.items()}
+    nations = {code: value[1] for code, value in lookup.items()}
+
+    _, test = dataset.split_by_season(samples, args.holdout)
+    comparison = baselines.compare(
+        test, model_scorer=lambda s: model.score_many(s.features)) if test else None
+
+    summary = export_mod.write_site_data(
+        samples, model, names, nations, comparison,
+        out_dir=Path(args.out), holdout_seasons=args.holdout,
+    )
+    print(f"wrote {summary['races']} races to {summary['out_dir']} "
+          f"({summary['megabytes']} MB)")
+    return 0
 
 
 def main(argv: Optional[List[str]] = None) -> int:
