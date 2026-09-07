@@ -53,7 +53,7 @@ pairs:
 | FIS points (the free alternative) | 0.6953 |
 | recent form, **no similarity kernel** | 0.7750 |
 | similarity kernel alone, **unfitted** | 0.8188 |
-| **learned ranker** | **0.8190** |
+| **learned ranker** | **0.8241** |
 
 Read that table downward, because the interesting result is not the top line.
 
@@ -61,12 +61,34 @@ Read that table downward, because the interesting result is not the top line.
 discipline and distance is worth **+4.4 points** over ignoring them
 (0.7750 → 0.8188). That is the whole thesis of the model and it holds up.
 
-**The learning on top is worth almost nothing** — 0.8188 to 0.8190. The
-features are strongly collinear, all of them measuring some version of "how
-good is this skier at this sort of race", so fitting weights over them cannot
-improve much on the best one alone. Increasing training from 300 to 8,000
-epochs changes nothing; it has converged. Reported because it is true, and
-because it says where the next gain is: better features, not a bigger model.
+**The learning on top is worth very little** — the fitted weights beat the
+single best feature by a few thousandths. The features are strongly collinear,
+all measuring some version of "how good is this skier at this sort of race",
+so a linear combination cannot improve much on the best one alone, and
+training for 8,000 epochs instead of 300 changes nothing. Reported because it
+is true, and because it says where the gains actually came from.
+
+**They came from the kernel and the data**, not the model:
+
+| change | held-out 2026 |
+|---|---|
+| starting point | 0.8190 |
+| tuned kernel constants | 0.8234 |
+| + races beyond the World Cup | **0.8241** |
+
+The tuning is the more interesting half. Three constants were guesses, fitted
+on a validation season with the test season untouched:
+
+| constant | guessed | tuned | what it says |
+|---|---|---|---|
+| technique mismatch | 0.45 | **0.15** | technique matters far more than assumed |
+| recency half-life | 400 d | **150 d** | form moves faster than a season and a half |
+| length sigma | 0.50 | **0.75** | a broader window over distance is better |
+
+**Splitting the model by discipline does not help.** Fitting separate rankers
+for sprint and distance scored 0.8190 against the shared model's 0.8190 —
+identical. The kernel already encodes the distinction in the features, so the
+weights have nothing left to separate.
 
 ### One trap worth documenting
 
@@ -80,6 +102,37 @@ test named for it.
 
 A baseline that cheats is worse than no baseline, because it makes a working
 model look useless.
+
+### Racing beyond the World Cup
+
+The World Cup alone leaves **455 of 934 athletes with fewer than ten starts**,
+and for those the kernel has almost nothing to weight. World Championships,
+Olympics, national championships and continental series fill that in.
+
+The obvious way to do it is wrong. Percentile within the field means winning a
+regional race scores 0.0 — exactly what winning the World Cup scores — so a
+domestic specialist would outrank someone finishing fifteenth against the
+world.
+
+So each race is measured rather than labelled:
+
+* A race outside the World Cup is **usable only if five of its starters have
+  five or more World Cup starts behind them**. Those anchors connect it to the
+  rest of the data and are what its strength is estimated from.
+* **Strength is the product** of how many anchors started and how good they
+  are — a product, because thirty mediocre anchors is not a strong field, and
+  neither is a handful of superb ones.
+* Percentiles are rescaled by strength, so winning a weak race becomes a *less
+  good* result rather than a bad one. The rescaling never reorders anyone
+  inside their own race.
+
+A hand-set table — World Cup 1.0, Continental Cup 0.7 — was rejected because it
+is wrong in both directions. A strong Norwegian national championship is a
+harder race than a thin World Cup sprint, and a category code cannot know that.
+
+The five-start threshold is measured: the correlation between our estimate of
+an athlete and their next result climbs steeply to about ten starts and then
+flattens (0.72 at 3–5, 0.75 at 6–9, 0.78 at 10–19).
 
 ### The Elo model
 
@@ -138,8 +191,42 @@ pip install -e ".[dev]"
 
 ## Use
 
+### The learned ranker
+
 ```bash
-# 1. build a result history (FIS season code 2025 = the 2024/25 winter)
+# 1. build a result history (FIS season code 2025 = the 2024/25 winter).
+#    Categories beyond the World Cup are worth pulling: they are where the
+#    thinly-raced half of the field actually competes.
+xcpredict scrape season 2023 2024 2025 2026 --categories WC WSC OWG NC
+
+# 2. fit the ranker. Weights land in data/model.json -- nine numbers,
+#    readable in a diff.
+xcpredict train
+
+# 3. score it against every baseline on the held-out season
+xcpredict evaluate
+
+# 4. freeze predictions for the web page
+xcpredict export
+```
+
+`xcpredict evaluate` prints the model next to its floor and its competitors,
+because a pairwise accuracy on its own means nothing:
+
+```
+method                              races     pairs  pair acc
+--------------------------------------------------------------
+random                                 76   225,590    0.4986
+fis_points                             76   225,590    0.6953
+recent_form (no kernel)                76   225,590    0.7750
+similar_form (kernel, unfitted)        76   225,590    0.8188
+learned model                          76   225,590    0.8241
+```
+
+### The Elo model
+
+```bash
+# 1. build a result history
 xcpredict scrape season 2023 2024 2025 2026
 
 # 2. fit ratings from those results
