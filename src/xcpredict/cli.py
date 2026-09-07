@@ -41,7 +41,9 @@ def cmd_scrape_season(args) -> int:
     fetcher = _fetcher(args)
     total = 0
     for season in args.seasons:
-        for entries in fis.crawl_season(fetcher, season, force=args.force):
+        categories = args.categories or ["WC"]
+        for entries in fis.crawl_categories(fetcher, season, categories,
+                                            force=args.force):
             db.save_entries(conn, entries)
             total += 1
             print(f"{entries.race.race_id}  {entries.race.race_date}  "
@@ -213,6 +215,10 @@ def build_parser() -> argparse.ArgumentParser:
     season.add_argument("seasons", nargs="+", type=int,
                         help="FIS season codes, e.g. 2025 for the 2024/25 winter")
     season.add_argument("--force", action="store_true", help="re-fetch cached pages")
+    season.add_argument("--categories", nargs="+", default=None,
+                        metavar="CODE",
+                        help="FIS category codes: WC COC WSC OWG NC FIS. "
+                             "Default WC only.")
     season.set_defaults(func=cmd_scrape_season)
 
     race = scrape_sub.add_parser("race", help="individual races by FIS raceid", parents=[common])

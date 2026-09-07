@@ -41,10 +41,32 @@ RE_DATE = re.compile(r"^[A-Z][a-z]+ \d{1,2}, \d{4}$")
 
 # --------------------------------------------------------------------------- URLs
 
-def calendar_url(season: int) -> str:
+#: FIS category codes worth scraping, and what they are.
+#:
+#: The World Cup alone leaves 455 of 934 athletes with fewer than ten starts,
+#: which is far too thin for a model built on "what has this skier done in
+#: races like this one". These are the other places international-calibre
+#: skiers actually race.
+CATEGORIES = {
+    "WC": "World Cup",
+    "COC": "Continental Cup",          # Scandinavian, Alpen, US SuperTour...
+    "WSC": "World Championships",
+    "OWG": "Olympic Winter Games",
+    "NC": "National Championships",
+    "FIS": "FIS races",               # the broad base; most will be filtered out
+}
+
+#: Categories pulled by default. ``FIS`` is deliberately excluded: it is
+#: enormous, overwhelmingly domestic, and almost all of it fails the
+#: World-Cup-athlete filter anyway, so it costs a very long crawl to add
+#: almost nothing.
+DEFAULT_CATEGORIES = ("WC", "COC", "WSC", "OWG", "NC")
+
+
+def calendar_url(season: int, category: str = "WC") -> str:
     """`season` is the FIS season code: 2025 means the 2024/25 winter."""
     return (f"{BASE}/calendar-results.html?sectorcode={SECTOR}&seasoncode={season}"
-            f"&categorycode=WC")
+            f"&categorycode={category}")
 
 
 def event_url(event_id: str, season: int) -> str:
@@ -339,11 +361,12 @@ def crawl_race(fetcher: Fetcher, race_id: str, season: Optional[int] = None,
     return entries
 
 
-def crawl_season(fetcher: Fetcher, season: int, force: bool = False) -> Iterator[RaceEntries]:
-    """Yield every World Cup race of a season, event by event."""
-    calendar = fetcher.get(calendar_url(season), force=force)
+def crawl_season(fetcher: Fetcher, season: int, force: bool = False,
+                 category: str = "WC") -> Iterator[RaceEntries]:
+    """Yield every race of a season in one category, event by event."""
+    calendar = fetcher.get(calendar_url(season, category), force=force)
     event_ids = parse_calendar(calendar)
-    log.info("season %s: %d events", season, len(event_ids))
+    log.info("season %s %s: %d events", season, category, len(event_ids))
 
     for event_id in event_ids:
         page = fetcher.get(event_url(event_id, season), force=force)
@@ -354,3 +377,19 @@ def crawl_season(fetcher: Fetcher, season: int, force: bool = False) -> Iterator
                                  event_id=event_id, force=force)
             if entries is not None:
                 yield entries
+
+
+def crawl_categories(fetcher: Fetcher, season: int,
+                     categories: Iterable[str] = DEFAULT_CATEGORIES,
+                     force: bool = False) -> Iterator[RaceEntries]:
+    """Every race of a season across several categories.
+
+    Failures in one category do not stop the others. A missing calendar is
+    normal -- not every category runs in every season, and an Olympic year has
+    no World Championships -- so it is logged and skipped rather than raised.
+    """
+    for category in categories:
+        try:
+            yield from crawl_season(fetcher, season, force=force, category=category)
+        except Exception as exc:      # noqa: BLE001 - one bad category, keep going
+            log.warning("season %s category %s failed: %s", season, category, exc)

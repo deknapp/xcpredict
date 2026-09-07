@@ -24,6 +24,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from . import strength as strength_mod
 from .features import Performance, build_features
 from .rating.elo import _parse_date
 
@@ -66,9 +67,30 @@ def _percentile(rank: Optional[int], field_size: int) -> float:
     return (rank - 1) / (field_size - 1)
 
 
+#: Substrings marking a race as World Cup. Matched on the series name FIS
+#: prints on the page rather than on a category code, because the code is not
+#: stored per race and the name is.
+WORLD_CUP_MARKERS = ("world cup",)
+
+#: Series that are never useful regardless of who started: youth and children's
+#: racing, where a stray World Cup athlete's presence would be a data error
+#: rather than a signal.
+EXCLUDED_MARKERS = ("children", "youth", "u16", "u14")
+
+
+def is_world_cup(race) -> bool:
+    series = (race.get("series") or "").lower()
+    return any(marker in series for marker in WORLD_CUP_MARKERS)
+
+
+def is_excluded(race) -> bool:
+    series = (race.get("series") or "").lower()
+    return any(marker in series for marker in EXCLUDED_MARKERS)
+
+
 def load_races(conn, *, include_team: bool = False) -> List[dict]:
     sql = """
-        SELECT race_id, season, race_date, place, title, gender,
+        SELECT race_id, season, race_date, place, title, gender, series,
                kind, technique, start_type, length_km, is_team
         FROM races
         WHERE race_date IS NOT NULL
@@ -94,6 +116,8 @@ def build_samples(
     *,
     min_rateable: int = MIN_RATEABLE,
     include_team: bool = False,
+    use_other_series: bool = True,
+    world_cup_only_samples: bool = True,
 ) -> List[RaceSample]:
     """Every race, with causally-safe features. Chronological order.
 
@@ -105,8 +129,17 @@ def build_samples(
     races = load_races(conn, include_team=include_team)
     history: Dict[str, List[Performance]] = {}
     samples: List[RaceSample] = []
+    wc_starts: Dict[str, int] = {}
+    skipped_weak = skipped_excluded = 0
 
     for race in races:
+        world_cup = is_world_cup(race)
+
+        if is_excluded(race):
+            skipped_excluded += 1
+            continue
+        if not world_cup and not use_other_series:
+            continue
         race_date = _parse_date(race["race_date"])
         results = load_results(conn, race["race_id"])
         if not results:
@@ -114,6 +147,28 @@ def build_samples(
 
         finishers = [r for r in results if r["rank"] is not None]
         field_size = len(results)
+
+        # A race outside the World Cup only counts if enough of its field are
+        # skiers we already know. Without that anchoring the result is not
+        # comparable with anything else in the data, however fast it was.
+        if world_cup:
+            field = strength_mod.FieldStrength(
+                n_anchors=len(finishers), n_starters=field_size,
+                anchor_quality=1.0, strength=1.0, usable=True)
+        else:
+            anchors = strength_mod.count_anchors(
+                [r["fis_code"] for r in results], wc_starts)
+            standings = []
+            for code in anchors:
+                past = history.get(code, [])
+                if past:
+                    recent = past[-12:]
+                    standings.append(
+                        1.0 - sum(p.percentile for p in recent) / len(recent))
+            field = strength_mod.assess(standings, field_size)
+            if not field.usable:
+                skipped_weak += 1
+                continue
 
         rows, codes, points = [], [], []
         for entry in finishers:
@@ -126,7 +181,8 @@ def build_samples(
             codes.append(entry["fis_code"])
             points.append(entry["fis_points"])
 
-        if len(rows) >= min_rateable:
+        wanted = world_cup or not world_cup_only_samples
+        if wanted and len(rows) >= min_rateable:
             samples.append(RaceSample(
                 race_id=race["race_id"],
                 race_date=race_date,
@@ -142,22 +198,34 @@ def build_samples(
                 fis_points=points,
             ))
 
-        # Only now does this race enter the record.
+        # Only now does this race enter the record. The percentile stored is
+        # adjusted for how strong the field was, so a win against nobody does
+        # not read like a win against the world. Ordering inside the race is
+        # untouched -- the adjustment rescales, it never reorders.
         length = race["length_km"] or 0.0
         for entry in results:
+            raw = _percentile(entry["rank"], field_size)
             history.setdefault(entry["fis_code"], []).append(Performance(
                 race_date=race_date,
                 kind=race["kind"],
                 technique=race["technique"],
                 length_km=float(length) if length else
                 (1.5 if race["kind"] == "sprint" else 12.0),
-                percentile=_percentile(entry["rank"], field_size),
+                percentile=strength_mod.adjust_percentile(raw, field.strength),
                 field_size=field_size,
                 fis_points=entry["fis_points"],
                 finished=entry["rank"] is not None,
             ))
 
-    log.info("built %d rateable races from %d total", len(samples), len(races))
+        if world_cup:
+            for entry in results:
+                wc_starts[entry["fis_code"]] = wc_starts.get(entry["fis_code"], 0) + 1
+
+    log.info(
+        "built %d sample races from %d total (%d skipped as too weak, "
+        "%d excluded series)",
+        len(samples), len(races), skipped_weak, skipped_excluded,
+    )
     return samples
 
 

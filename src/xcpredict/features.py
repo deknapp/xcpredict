@@ -42,20 +42,31 @@ from .rating.elo import _parse_date
 
 # ---------------------------------------------------------------- similarity
 
-#: Half-life in days for how fast old results stop mattering. Roughly a season
-#: and a half: last winter is strong evidence, three winters ago is weak.
-RECENCY_HALF_LIFE_DAYS = 400.0
+#: Half-life in days for how fast old results stop mattering.
+#:
+#: 150, not the 400 originally guessed. Tuned on a validation season (2025)
+#: with the test season untouched, then confirmed on it: shorter memory is
+#: better, which says form in this sport moves faster than a season and a half.
+#: Roughly five months, so last winter counts for about a quarter of this one.
+RECENCY_HALF_LIFE_DAYS = 150.0
 
 #: How sharply length similarity falls off, in natural-log units of distance
-#: ratio. At 0.5, a 10 km judged against a 15 km keeps about 45% weight and
-#: against a 1.5 km sprint about 2%. Log-ratio rather than absolute difference
-#: because 5 km versus 10 km is a bigger jump in kind than 45 km versus 50 km.
-LENGTH_SIGMA_LOG = 0.5
+#: ratio. Log-ratio rather than absolute difference because 5 km versus 10 km
+#: is a bigger jump in kind than 45 km versus 50 km.
+#:
+#: 0.75 rather than the 0.5 first guessed: a slightly broader window over
+#: distance is better, which makes sense once technique is weighted harder --
+#: the model would rather have more 15 km classics than fewer 10 km classics.
+LENGTH_SIGMA_LOG = 0.75
 
 #: Weight retained when the technique differs. Not zero: a strong classic skier
 #: is usually a decent skate skier, and treating the two as unrelated discards
 #: half the record for anyone who races both.
-TECHNIQUE_MISMATCH = 0.45
+#:
+#: 0.15, not the 0.45 first guessed. Technique matters considerably more than
+#: assumed -- a classic result is only weak evidence about a skate race. This
+#: was the single largest of the three tuning gains.
+TECHNIQUE_MISMATCH = 0.15
 
 #: Skiathlon is half classic and half free, so it is partially similar to both
 #: rather than similar to neither.
