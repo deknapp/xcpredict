@@ -101,6 +101,26 @@ def load_races(conn, *, include_team: bool = False) -> List[dict]:
     return [dict(r) for r in conn.execute(sql)]
 
 
+def _margins(finishers: List[dict]) -> Dict[str, float]:
+    """Time behind the winner, scaled by the winner-to-median gap.
+
+    Returns {} when FIS published no usable times, which is about a third of
+    races. An empty result is correct there: the feature that consumes this
+    carries its own "is this real" flag, so a missing margin is absent rather
+    than guessed at.
+    """
+    timed = [r for r in finishers if r.get("time_s")]
+    if len(timed) < 6:
+        return {}
+    times = sorted(float(r["time_s"]) for r in timed)
+    winner = times[0]
+    median = times[len(times) // 2]
+    spread = median - winner
+    if spread <= 0:
+        return {}
+    return {r["fis_code"]: (float(r["time_s"]) - winner) / spread for r in timed}
+
+
 def load_results(conn, race_id: str) -> List[dict]:
     rows = [dict(r) for r in conn.execute(
         """SELECT fis_code, rank, time_s, fis_points, status
@@ -147,6 +167,13 @@ def build_samples(
 
         finishers = [r for r in results if r["rank"] is not None]
         field_size = len(results)
+
+        # Time behind the winner, scaled so the winner is 0 and the median
+        # finisher is 1. Race-relative on purpose: a four-second gap in a
+        # sprint and a two-minute gap in a 50 km are the same distance from
+        # the front, and an absolute figure would make every sprint look close
+        # and every marathon look ragged.
+        margins = _margins(finishers)
 
         # A race outside the World Cup only counts if enough of its field are
         # skiers we already know. Without that anchoring the result is not
@@ -205,6 +232,11 @@ def build_samples(
         length = race["length_km"] or 0.0
         for entry in results:
             raw = _percentile(entry["rank"], field_size)
+            margin = margins.get(entry["fis_code"])
+            # A weak field flatters the margin exactly as it flatters the
+            # placing, so it takes the same discount.
+            if margin is not None and field.strength > 0:
+                margin = margin / max(0.15, field.strength)
             history.setdefault(entry["fis_code"], []).append(Performance(
                 race_date=race_date,
                 kind=race["kind"],
@@ -215,6 +247,7 @@ def build_samples(
                 field_size=field_size,
                 fis_points=entry["fis_points"],
                 finished=entry["rank"] is not None,
+                margin=margin,
             ))
 
         if world_cup:

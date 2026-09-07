@@ -179,3 +179,59 @@ def test_every_feature_is_finite():
     history = [perf(date(2025, 12, 1), pct=0.0), perf(date(2025, 12, 2), pct=1.0)]
     for value in build_features(history, race(), date(2026, 1, 1)):
         assert math.isfinite(value)
+
+
+# ------------------------------------------------------------- time margins
+
+
+def perf_m(when, margin, **kw):
+    p = perf(when, **kw)
+    return Performance(race_date=p.race_date, kind=p.kind, technique=p.technique,
+                       length_km=p.length_km, percentile=p.percentile,
+                       field_size=p.field_size, fis_points=p.fis_points,
+                       finished=p.finished, margin=margin)
+
+
+def test_a_smaller_time_gap_produces_a_better_margin_feature():
+    """Rank says 'tenth'; margin says whether tenth was four seconds back or
+    three minutes, and those are different results."""
+    idx = features.FEATURE_NAMES.index("similar_margin")
+    close = build_features([perf_m(date(2025, 12, 1), 0.1)], race(), date(2026, 1, 1))
+    adrift = build_features([perf_m(date(2025, 12, 1), 2.5)], race(), date(2026, 1, 1))
+    assert close[idx] > adrift[idx]
+
+
+def test_missing_times_are_flagged_rather_than_guessed():
+    has = features.FEATURE_NAMES.index("has_margin")
+    without = build_features([perf(date(2025, 12, 1))], race(), date(2026, 1, 1))
+    with_time = build_features([perf_m(date(2025, 12, 1), 0.5)], race(), date(2026, 1, 1))
+    assert without[has] == 0.0
+    assert with_time[has] == 1.0
+
+
+def test_a_single_disastrous_race_is_clipped():
+    """One blown race ten minutes down should not define an athlete."""
+    idx = features.FEATURE_NAMES.index("similar_margin")
+    bad = build_features([perf_m(date(2025, 12, 1), 3.0)], race(), date(2026, 1, 1))
+    catastrophic = build_features([perf_m(date(2025, 12, 1), 50.0)], race(), date(2026, 1, 1))
+    assert bad[idx] == catastrophic[idx]
+
+
+def test_margins_respect_the_similarity_kernel():
+    """A sprint margin should barely move a 10 km margin feature."""
+    idx = features.FEATURE_NAMES.index("similar_margin")
+    same_event = build_features(
+        [perf_m(date(2025, 12, 1), 0.1, kind="distance", technique="F", length=10)],
+        race(kind="distance", technique="F", length_km=10), date(2026, 1, 1))
+    other_event = build_features(
+        [perf_m(date(2025, 12, 1), 0.1, kind="sprint", technique="C", length=1.4),
+         perf_m(date(2025, 12, 2), 2.5, kind="distance", technique="F", length=10)],
+        race(kind="distance", technique="F", length_km=10), date(2026, 1, 1))
+    assert same_event[idx] > other_event[idx]
+
+
+def test_a_future_timed_race_cannot_leak_into_the_margin():
+    a = build_features([perf_m(date(2025, 12, 1), 0.5)], race(), date(2026, 1, 1))
+    b = build_features([perf_m(date(2025, 12, 1), 0.5),
+                        perf_m(date(2026, 5, 1), 0.01)], race(), date(2026, 1, 1))
+    assert a == b

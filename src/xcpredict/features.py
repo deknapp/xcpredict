@@ -150,6 +150,11 @@ class Performance:
     field_size: int
     fis_points: Optional[float]
     finished: bool
+    #: Time behind the winner, scaled so 0 is the win and 1 is the median
+    #: finisher of that race. None where FIS published no times (~37% of
+    #: races). Rank says "tenth"; this says whether tenth was four seconds
+    #: back or three minutes, which are different results.
+    margin: Optional[float] = None
 
 
 #: Names of the features produced, in a fixed order. Kept explicit because the
@@ -164,6 +169,8 @@ FEATURE_NAMES = [
     "fis_points",          # most recent *prior* FIS points, scaled and inverted
     "has_fis_points",      # whether the above is real or a fallback
     "consistency",         # 1 - weighted stdev of percentile
+    "similar_margin",      # weighted mean time-behind in similar races (inverted)
+    "has_margin",          # whether any timed result backs the above
 ]
 
 
@@ -248,6 +255,32 @@ def build_features(
     points = next((p.fis_points for p in reversed(past)
                    if p.fis_points is not None and p.fis_points > 0), None)
 
+    # Time behind the winner, over the same similarity weighting. Clipped at
+    # three times the median gap: a single blown race where someone finished
+    # ten minutes down should not define them, and the tail is long.
+    margin_values, margin_weights = [], []
+    for p in past:
+        if p.margin is None:
+            continue
+        similarity = (
+            technique_similarity(target_race["technique"], p.technique)
+            * kind_similarity(target_race["kind"], p.kind)
+            * length_similarity(target_len, p.length_km)
+        )
+        weight = similarity * recency_weight(p.race_date, target_date)
+        if weight <= 0:
+            continue
+        margin_values.append(min(p.margin, 3.0))
+        margin_weights.append(weight)
+
+    if margin_values:
+        margin_mean, _ = _weighted_stats(margin_values, margin_weights)
+        margin_feature = 1.0 - min(1.0, margin_mean / 3.0)
+        has_margin = 1.0
+    else:
+        margin_feature = 0.5
+        has_margin = 0.0
+
     return [
         1.0 - similar_mean,                       # higher is better
         1.0 - best,
@@ -258,6 +291,8 @@ def build_features(
         1.0 - min(points, 300.0) / 300.0 if points is not None else 0.5,
         1.0 if points is not None else 0.0,
         1.0 - min(1.0, similar_sd if similar_sd is not None else 0.5),
+        margin_feature,
+        has_margin,
     ]
 
 
