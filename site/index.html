@@ -80,6 +80,25 @@
   .empty { color:var(--muted); padding:22px 0; text-align:center; }
   footer { margin-top:32px; font-size:12.5px; color:var(--muted); line-height:1.7; }
   code { font-size:12px; background:rgba(125,125,125,.13); padding:1px 5px; border-radius:4px; }
+  .chart { width:100%; height:auto; display:block; }
+  .chart .grid { stroke:var(--line); stroke-width:1; }
+  .chart .seasonline { stroke:var(--line); stroke-width:1; stroke-dasharray:3 3; }
+  .chart .ylab, .chart .xlab { fill:var(--muted); font-size:10px; text-anchor:end; }
+  .chart .xlab { text-anchor:middle; }
+  .legend { margin-top:10px; display:flex; gap:16px; flex-wrap:wrap; font-size:13px; }
+  .key i { display:inline-block; width:10px; height:10px; border-radius:2px;
+           margin-right:6px; vertical-align:middle; }
+  .muted { color:var(--muted); }
+  .picked { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+  .pill { font-size:12px; padding:3px 9px; border:1px solid var(--line);
+          border-radius:20px; cursor:pointer; background:var(--panel); }
+  .pill:hover { border-color:var(--accent); color:var(--accent); }
+  .prose { max-width:64ch; }
+  .prose p { margin:0 0 14px; }
+  .prose h4 { font-size:15px; margin:24px 0 6px; }
+  .prose ul { margin:0 0 14px; padding-left:20px; }
+  .prose li { margin-bottom:6px; }
+  .money { font-variant-numeric:tabular-nums; }
 </style>
 </head>
 <body>
@@ -89,6 +108,10 @@
     <button data-view="predict" class="on">Predict</button>
     <button data-view="athletes">Athletes</button>
     <button data-view="races">Races</button>
+    <button data-view="trajectory">Trajectory</button>
+    <button data-view="fantasy">Fantasy</button>
+    <button data-view="export">Export</button>
+    <button data-view="methods">How it works</button>
   </nav>
 
   <div id="view"></div>
@@ -115,6 +138,9 @@
 </div>
 
 <script src="kernel.js"></script>
+<script src="trajectory.js"></script>
+<script src="fantasy.js"></script>
+<script src="csv.js"></script>
 <script>
 (function () {
   "use strict";
@@ -175,6 +201,10 @@
     setNav();
     if (view === "predict") { return renderPredict(); }
     if (view === "athletes") { return renderAthletes(); }
+    if (view === "trajectory") { return renderTrajectory(); }
+    if (view === "fantasy") { return renderFantasy(); }
+    if (view === "export") { return renderExport(); }
+    if (view === "methods") { return renderMethods(); }
     return renderRaces();
   }
 
@@ -486,6 +516,419 @@
   function stat(k, v) {
     return '<span class="stat"><span class="k">' + k + '</span><br>' +
            '<span class="v">' + v + "</span></span>";
+  }
+
+
+
+  // -------------------------------------------------------------- methods
+
+  function renderMethods() {
+    el("view").innerHTML =
+      '<div class="panel prose">' +
+        "<h3>How this works</h3>" +
+        "<p>Written for someone who follows ski racing but does not work in " +
+        "machine learning. There is a link to the actual code at the bottom.</p>" +
+
+        "<h4>The idea</h4>" +
+        "<p>To guess how a skier will do in a 10&nbsp;km skate race, look " +
+        "hardest at her other 10&nbsp;km skate races. Then at her 15&nbsp;km " +
+        "skate races, which are close. Then at her 10&nbsp;km classic races, " +
+        "which are further off. And barely at her sprints, which say almost " +
+        "nothing about a 10&nbsp;km.</p>" +
+        "<p>That is the whole thing. Nothing gets thrown away — a sprint result " +
+        "is weak evidence about a 10&nbsp;km, not no evidence — but results " +
+        "count for more the more they resemble the race being predicted. Recent " +
+        "races count for more than old ones, with about five months as the " +
+        "half-life: last winter counts for roughly a quarter of this one.</p>" +
+        "<p>A 2&nbsp;km prologue ends up being treated a lot like a sprint. " +
+        "Nobody told the program that. It happens because 2&nbsp;km is close to " +
+        "1.5&nbsp;km, and closeness is what it measures.</p>" +
+
+        "<h4>Where the numbers come from</h4>" +
+        "<p>Every World Cup result from 2023 to 2026, plus World " +
+        "Championships, Olympics and national championships — 1,661 races and " +
+        "79,725 results, scraped from FIS.</p>" +
+        "<p>Races outside the World Cup only count if at least five skiers in " +
+        "them are World Cup regulars, and they count for less when the field " +
+        "was weak. Otherwise winning a small domestic race would look like " +
+        "winning a World Cup, and it is not.</p>" +
+
+        "<h4>What the computer actually learned</h4>" +
+        "<p>The program was shown every pair of skiers who have raced each " +
+        "other — hundreds of thousands of them — and asked, each time, which " +
+        "one finished ahead. It adjusted eleven numbers until it got as many " +
+        "of those pairs right as it could. Those eleven numbers are the model. " +
+        "You can read them: they are in a small file called " +
+        "<code>model.json</code>.</p>" +
+        "<p>Two of the things it decided are worth knowing. It leans on the " +
+        "<em>gap</em> to the winner more than on the finishing place — being " +
+        "four seconds down is a different result from being three minutes " +
+        "down, even from the same position. And technique matters more than " +
+        "expected: a classic result says less about a skate race than most " +
+        "people would assume.</p>" +
+
+        "<h4>How good is it?</h4>" +
+        "<p>It was tested on a season it had never seen. Out of every hundred " +
+        "pairs of skiers in those races, it called about <strong>83</strong> " +
+        "the right way round.</p>" +
+        "<p>On its own that number means nothing, so here is what it is up " +
+        "against on exactly the same races:</p>" +
+        "<ul>" +
+          "<li><strong>50 out of 100</strong> — flipping a coin.</li>" +
+          "<li><strong>70 out of 100</strong> — just ranking skiers by their " +
+            "published FIS points, which anyone can look up for free.</li>" +
+          "<li><strong>78 out of 100</strong> — going on recent form alone, " +
+            "ignoring whether the race is a sprint or a marathon.</li>" +
+          "<li><strong>83 out of 100</strong> — this model.</li>" +
+        "</ul>" +
+        "<p>The jump from 78 to 82 is the whole point of the thing: it is what " +
+        "paying attention to technique and distance buys you. The last step, " +
+        "from that to 83, is what the fitted numbers add on top, and it is " +
+        "small. That is reported here rather than hidden, because it is true.</p>" +
+
+        "<h4>What it cannot do</h4>" +
+        "<ul>" +
+          "<li><strong>It does not know who is entered.</strong> It will " +
+            "cheerfully rank a skier who is not at the race. A start-list " +
+            "version is being built.</li>" +
+          "<li><strong>It does not know about this morning.</strong> Illness, " +
+            "a cold, bad skis, a fall, a course that suits someone — none of " +
+            "that is in it.</li>" +
+          "<li><strong>It does not know about waxing.</strong> On the days " +
+            "when the wax decides the race, it will be wrong and will not know " +
+            "why.</li>" +
+          "<li><strong>It is worse on skiers with thin records.</strong> " +
+            "Someone with three career starts has almost nothing to weigh.</li>" +
+          "<li><strong>It gives an order, not odds.</strong> It says who it " +
+            "expects to finish ahead of whom. It does not say by how much or " +
+            "with what confidence.</li>" +
+        "</ul>" +
+
+        "<h4>One thing that went wrong, and how it was caught</h4>" +
+        "<p>An early version of the comparison against FIS points scored 96 " +
+        "out of 100 — far better than the model, which would have made the " +
+        "whole project pointless. It was cheating. The FIS points stored " +
+        "against a result are the points <em>earned in that race</em>: the " +
+        "winner scores zero and it rises from there. Sorting by them is just " +
+        "reading the finishing order off the answer sheet.</p>" +
+        "<p>It now uses the points a skier carried in from earlier races, " +
+        "which is what you would have had before the start, and there is a " +
+        "test that fails if anyone reintroduces the mistake.</p>" +
+
+        "<h4>Read the code</h4>" +
+        "<p>All of it is open: " +
+        '<a href="https://github.com/deknapp/xcpredict">github.com/deknapp/xcpredict</a>. ' +
+        "The similarity idea is in <code>features.py</code>, the fitting in " +
+        "<code>ml.py</code>, and the comparisons above in " +
+        "<code>baselines.py</code>. The version running in this page is " +
+        "<code>kernel.js</code>, which is a translation of the first of those " +
+        "so your browser can redo the sums when you change a setting.</p>" +
+      "</div>";
+  }
+
+  // ---------------------------------------------------------- trajectory
+
+  var traj = [];   // fis codes being plotted
+
+  function renderTrajectory() {
+    el("view").innerHTML =
+      '<div class="panel">' +
+        "<h3>Career trajectories</h3>" +
+        '<p class="sub">Races along the bottom, finishing place up the side, ' +
+        "first at the top. Add two or three skiers and you can see which of " +
+        "them is climbing.</p>" +
+        '<div class="controls">' +
+          '<select id="t-gender"><option value="M">Men</option>' +
+            '<option value="W">Women</option></select>' +
+          '<select id="t-mode"><option value="place">Raw place</option>' +
+            '<option value="adjusted">Field-adjusted</option></select>' +
+          '<select id="t-season"><option value="">All seasons</option></select>' +
+          '<select id="t-kind"><option value="">Sprint &amp; distance</option>' +
+            '<option value="sprint">Sprint only</option>' +
+            '<option value="distance">Distance only</option></select>' +
+          '<select id="t-tech"><option value="">Both techniques</option>' +
+            '<option value="C">Classic only</option>' +
+            '<option value="F">Free only</option></select>' +
+          '<label class="chk"><input type="checkbox" id="t-wc" checked> World Cup only</label>' +
+        "</div>" +
+        '<input type="search" id="t-search" placeholder="Add a skier — type a name">' +
+        '<div class="list" id="t-results" style="max-height:150px"></div>' +
+        '<div class="picked" id="t-picked"></div>' +
+      "</div>" +
+      '<div class="panel"><div id="t-chart"><div class="empty">Add a skier.</div></div></div>';
+
+    var seasons = {};
+    D.races.forEach(function (r) { if (r.season) { seasons[r.season] = 1; } });
+    Object.keys(seasons).sort().forEach(function (y) {
+      var o = document.createElement("option"); o.value = y; o.textContent = y;
+      el("t-season").appendChild(o);
+    });
+
+    ["t-mode", "t-season", "t-kind", "t-tech", "t-wc"].forEach(function (id) {
+      el(id).addEventListener("change", drawTraj);
+    });
+    el("t-gender").addEventListener("change", function () {
+      traj = []; drawPicked(); trajSearch(); drawTraj();
+    });
+    el("t-search").addEventListener("input", trajSearch);
+
+    if (!traj.length) {
+      traj = D.athletes.filter(function (a) { return a.gender === "M"; })
+                       .slice(0, 3).map(function (a) { return a.fis_code; });
+    }
+    drawPicked(); drawTraj();
+  }
+
+  function trajSearch() {
+    var q = el("t-search").value.trim().toLowerCase();
+    if (!q) { el("t-results").innerHTML = ""; return; }
+    var g = el("t-gender").value;
+    var hits = D.athletes.filter(function (a) {
+      return a.gender === g && a.name.toLowerCase().indexOf(q) !== -1 &&
+             traj.indexOf(a.fis_code) === -1;
+    }).slice(0, 10);
+    el("t-results").innerHTML = hits.map(function (a) {
+      return '<div class="row" data-add="' + a.fis_code + '"><span>' + h(a.name) +
+        ' <span class="nat">' + h(a.nation || "") + "</span></span>" +
+        '<span class="meta">' + a.wc_starts + " starts</span></div>";
+    }).join("") || '<div class="empty">No match.</div>';
+    Array.prototype.forEach.call(el("t-results").querySelectorAll("[data-add]"), function (n) {
+      n.addEventListener("click", function () {
+        if (traj.length >= 6) { return; }   // the palette has six colours
+        traj.push(n.dataset.add);
+        el("t-search").value = ""; trajSearch(); drawPicked(); drawTraj();
+      });
+    });
+  }
+
+  function drawPicked() {
+    el("t-picked").innerHTML = traj.map(function (code, i) {
+      var a = byCode(code);
+      return '<span class="pill" data-drop="' + code + '" style="border-color:' +
+        Trajectory.PALETTE[i % Trajectory.PALETTE.length] + '">' +
+        h(a ? a.name : code) + " ✕</span>";
+    }).join("") + (traj.length >= 6
+      ? '<span class="muted" style="font-size:12px;align-self:center">six at a time</span>' : "");
+    Array.prototype.forEach.call(el("t-picked").querySelectorAll("[data-drop]"), function (n) {
+      n.addEventListener("click", function () {
+        traj = traj.filter(function (c) { return c !== n.dataset.drop; });
+        drawPicked(); drawTraj();
+      });
+    });
+  }
+
+  function drawTraj() {
+    if (!traj.length) {
+      el("t-chart").innerHTML = '<div class="empty">Add a skier.</div>'; return;
+    }
+    Promise.all(traj.map(loadAthlete)).then(function (people) {
+      Trajectory.draw(el("t-chart"), people.map(function (a) { return { athlete: a }; }), {
+        mode: el("t-mode").value,
+        season: el("t-season").value,
+        kind: el("t-kind").value,
+        technique: el("t-tech").value,
+        worldCupOnly: el("t-wc").checked
+      });
+    });
+  }
+
+  // ------------------------------------------------------------- fantasy
+
+  function renderFantasy() {
+    var R = Fantasy.RULES;
+    el("view").innerHTML =
+      '<div class="panel">' +
+        "<h3>Best team you can afford</h3>" +
+        '<p class="sub">Given a budget and a price for each skier, there is a ' +
+        "provably best roster — not the most expensive skiers you can just " +
+        "afford, but the ones who are underpriced. This solves it exactly.</p>" +
+        '<div class="controls">' +
+          '<label class="chk">Budget <input type="number" id="f-budget" value="' +
+            R.budget + '" min="20" max="600" style="width:80px"></label>' +
+          '<label class="chk">Men <input type="number" id="f-men" value="' +
+            R.maxMen + '" min="0" max="8" style="width:56px"></label>' +
+          '<label class="chk">Women <input type="number" id="f-women" value="' +
+            R.maxWomen + '" min="0" max="8" style="width:56px"></label>' +
+          '<select id="f-kind"><option value="distance">Distance race</option>' +
+            '<option value="sprint">Sprint</option></select>' +
+          '<select id="f-tech"><option value="F">Free</option>' +
+            '<option value="C">Classic</option></select>' +
+        "</div>" +
+        '<button id="f-go" class="pill" style="padding:8px 16px;font-size:14px">Solve</button>' +
+        '<div class="warn" style="margin-top:10px">Prices and scoring are ' +
+        "<strong>estimates</strong> until Hoffman's real numbers can be read. " +
+        "Prices are derived from the model's own ranking; points assume a top-30 " +
+        "payout decaying from the win. Both live in one object in " +
+        "<code>fantasy.js</code> and are meant to be replaced.</div>" +
+      "</div>" +
+      '<div class="panel"><h2>Roster</h2><div id="f-out">' +
+      '<div class="empty">Press solve.</div></div></div>';
+    el("f-go").addEventListener("click", solveFantasy);
+  }
+
+  function solveFantasy() {
+    el("f-out").innerHTML = '<div class="empty">Scoring the field…</div>';
+    var race = { kind: el("f-kind").value, technique: el("f-tech").value,
+                 length_km: el("f-kind").value === "sprint" ? 1.5 : 10 };
+    var rules = {
+      budget: parseInt(el("f-budget").value, 10) || 100,
+      maxMen: parseInt(el("f-men").value, 10) || 0,
+      maxWomen: parseInt(el("f-women").value, 10) || 0,
+      pointsForPlace: Fantasy.RULES.pointsForPlace
+    };
+
+    // A manageable pool: the most experienced skiers of each gender.
+    var pool = [].concat(
+      D.athletes.filter(function (a) { return a.gender === "M"; }).slice(0, 40),
+      D.athletes.filter(function (a) { return a.gender === "W"; }).slice(0, 40)
+    );
+
+    Promise.all(pool.map(function (a) { return loadAthlete(a.fis_code); }))
+      .then(function (people) {
+        var asOf = new Date();
+        var scored = { M: [], W: [] };
+        people.forEach(function (a) {
+          var f = Kernel.buildFeatures(a.results, race, asOf, {});
+          if (!f || !a.gender) { return; }
+          scored[a.gender].push({ a: a, score: Kernel.score(D.model, f) });
+        });
+
+        var candidates = [];
+        ["M", "W"].forEach(function (g) {
+          scored[g].sort(function (x, y) { return y.score - x.score; });
+          scored[g].forEach(function (row, i) {
+            candidates.push({
+              code: row.a.fis_code, name: row.a.name, nation: row.a.nation,
+              gender: g,
+              predictedRank: i + 1,
+              price: Fantasy.RULES.priceFor(i + 1, scored[g].length),
+              points: Fantasy.expectedPoints(i + 1)
+            });
+          });
+        });
+
+        var result = Fantasy.solve(candidates, rules);
+        if (!result.team.length) {
+          el("f-out").innerHTML = '<div class="empty">No team fits that budget.</div>';
+          return;
+        }
+
+        var byGender = { M: [], W: [] };
+        result.team.forEach(function (c) { byGender[c.gender].push(c); });
+
+        el("f-out").innerHTML =
+          '<div style="margin-bottom:12px">' +
+            '<span class="stat"><span class="k">Projected points</span><br>' +
+            '<span class="v">' + result.points + "</span></span>" +
+            '<span class="stat"><span class="k">Spent</span><br>' +
+            '<span class="v money">' + result.spent + " / " + rules.budget + "</span></span>" +
+            '<span class="stat"><span class="k">Picked</span><br>' +
+            '<span class="v">' + byGender.M.length + "M · " + byGender.W.length + "W</span></span>" +
+          "</div>" +
+          ["M", "W"].map(function (g) {
+            if (!byGender[g].length) { return ""; }
+            return "<h2>" + (g === "M" ? "Men" : "Women") + "</h2>" +
+              "<table><thead><tr><th>Skier</th><th class='num'>Model rank</th>" +
+              "<th class='num'>Price</th><th class='num'>Points</th></tr></thead><tbody>" +
+              byGender[g].map(function (c) {
+                return '<tr><td><a href="#/athlete/' + c.code + '">' + h(c.name) +
+                  '</a> <span class="nat">' + h(c.nation || "") + "</span></td>" +
+                  "<td class='num'>" + c.predictedRank + "</td>" +
+                  "<td class='num money'>" + c.price + "</td>" +
+                  "<td class='num'>" + c.points + "</td></tr>";
+              }).join("") + "</tbody></table>";
+          }).join("") +
+          '<p class="note">Solved exactly by dynamic programming over the budget ' +
+          "and both roster caps — not a greedy points-per-dollar pass, which gets " +
+          "this wrong whenever a cap binds. " +
+          (result.team.length < (rules.maxMen + rules.maxWomen)
+            ? "<strong>It has left slots empty on purpose:</strong> under this " +
+              "scoring rule nobody outside the top thirty scores, so a cheap " +
+              "filler adds nothing and the money is better unspent. If the real " +
+              "game pays deeper, change pointsForPlace and the roster fills up."
+            : "") + "</p>";
+      });
+  }
+
+  // -------------------------------------------------------------- export
+
+  function renderExport() {
+    var weekends = Csv.weekendsFrom(D.races);
+    el("view").innerHTML =
+      '<div class="panel">' +
+        "<h3>Export</h3>" +
+        '<p class="sub">Spreadsheets, built here in the browser. UTF-8 with a ' +
+        "byte-order mark and every field quoted, so Excel opens them without " +
+        "mangling Scandinavian names or turning dates into something else.</p>" +
+      "</div>" +
+      '<div class="panel"><h2>One skier\'s whole career</h2>' +
+        '<input type="search" id="x-athlete" placeholder="Type a name">' +
+        '<div class="list" id="x-aresults" style="max-height:170px"></div></div>' +
+      '<div class="panel"><h2>One race</h2>' +
+        '<input type="search" id="x-race" placeholder="Type a place or title">' +
+        '<div class="list" id="x-rresults" style="max-height:170px"></div></div>' +
+      '<div class="panel"><h2>A race weekend</h2>' +
+        '<p class="sub">' + weekends.length + " weekends — races at the same " +
+        "place within four days of each other, since FIS does not label them.</p>" +
+        '<div class="list" id="x-weekends" style="max-height:250px"></div></div>';
+
+    el("x-athlete").addEventListener("input", function () {
+      var q = el("x-athlete").value.trim().toLowerCase();
+      if (!q) { el("x-aresults").innerHTML = ""; return; }
+      var hits = D.athletes.filter(function (a) {
+        return a.name.toLowerCase().indexOf(q) !== -1; }).slice(0, 10);
+      el("x-aresults").innerHTML = hits.map(function (a) {
+        return '<div class="row" data-code="' + a.fis_code + '"><span>' + h(a.name) +
+          ' <span class="nat">' + h(a.nation || "") + '</span></span>' +
+          '<span class="meta">' + a.n_results + " results ↓</span></div>";
+      }).join("") || '<div class="empty">No match.</div>';
+      Array.prototype.forEach.call(el("x-aresults").querySelectorAll("[data-code]"), function (n) {
+        n.addEventListener("click", function () {
+          loadAthlete(n.dataset.code).then(function (a) {
+            Csv.download(Csv.safeName(a.name) + "-results.csv", Csv.athleteCsv(a));
+          });
+        });
+      });
+    });
+
+    el("x-race").addEventListener("input", function () {
+      var q = el("x-race").value.trim().toLowerCase();
+      if (!q) { el("x-rresults").innerHTML = ""; return; }
+      var hits = D.races.filter(function (r) {
+        return ((r.place || "") + " " + (r.title || "")).toLowerCase().indexOf(q) !== -1;
+      }).slice(0, 12);
+      el("x-rresults").innerHTML = hits.map(function (r) {
+        return '<div class="row" data-id="' + r.race_id + '"><span>' + h(r.date) +
+          " · " + h(r.place || "") + " — " + h(r.title || "") + "</span>" +
+          '<span class="meta">' + r.n_athletes + " ↓</span></div>";
+      }).join("") || '<div class="empty">No match.</div>';
+      Array.prototype.forEach.call(el("x-rresults").querySelectorAll("[data-id]"), function (n) {
+        n.addEventListener("click", function () {
+          fetch("data/races/" + n.dataset.id + ".json").then(function (r) { return r.json(); })
+            .then(function (race) {
+              Csv.download(Csv.safeName(race.date + "-" + race.place) + ".csv",
+                           Csv.raceCsv(race));
+            });
+        });
+      });
+    });
+
+    el("x-weekends").innerHTML = weekends.slice(0, 120).map(function (w, i) {
+      return '<div class="row" data-w="' + i + '"><span>' + h(w.place) + " · " +
+        h(w.start) + (w.end !== w.start ? " – " + h(w.end) : "") + "</span>" +
+        '<span class="meta">' + w.n_races + " races ↓</span></div>";
+    }).join("");
+    Array.prototype.forEach.call(el("x-weekends").querySelectorAll("[data-w]"), function (n) {
+      n.addEventListener("click", function () {
+        var w = weekends[parseInt(n.dataset.w, 10)];
+        Promise.all(w.race_ids.map(function (id) {
+          return fetch("data/races/" + id + ".json").then(function (r) { return r.json(); });
+        })).then(function (races) {
+          Csv.download(Csv.safeName(w.start + "-" + w.place) + "-weekend.csv",
+                       Csv.weekendCsv(w, races));
+        });
+      });
+    });
   }
 
   // ------------------------------------------------------------ races
