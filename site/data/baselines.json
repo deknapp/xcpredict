@@ -2,31 +2,31 @@
   "random": {
     "races": 76,
     "skipped": 0,
-    "pairs": 225590,
-    "pair_accuracy": 0.4986
+    "pairs": 236638,
+    "pair_accuracy": 0.4963
   },
   "fis_points": {
     "races": 76,
     "skipped": 0,
-    "pairs": 225590,
-    "pair_accuracy": 0.6953
+    "pairs": 236638,
+    "pair_accuracy": 0.7
   },
   "recent_form (no kernel)": {
     "races": 76,
     "skipped": 0,
-    "pairs": 225590,
-    "pair_accuracy": 0.775
+    "pairs": 236638,
+    "pair_accuracy": 0.7758
   },
   "similar_form (kernel, unfitted)": {
     "races": 76,
     "skipped": 0,
-    "pairs": 225590,
-    "pair_accuracy": 0.8188
+    "pairs": 236638,
+    "pair_accuracy": 0.819
   },
   "learned model": {
     "races": 76,
     "skipped": 0,
-    "pairs": 225590,
-    "pair_accuracy": 0.819
+    "pairs": 236638,
+    "pair_accuracy": 0.8255
   }
 }

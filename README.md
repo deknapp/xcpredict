@@ -53,7 +53,7 @@ pairs:
 | FIS points (the free alternative) | 0.6953 |
 | recent form, **no similarity kernel** | 0.7750 |
 | similarity kernel alone, **unfitted** | 0.8188 |
-| **learned ranker** | **0.8241** |
+| **learned ranker** | **0.8255** |
 
 Read that table downward, because the interesting result is not the top line.
 
@@ -74,7 +74,19 @@ is true, and because it says where the gains actually came from.
 |---|---|
 | starting point | 0.8190 |
 | tuned kernel constants | 0.8234 |
-| + races beyond the World Cup | **0.8241** |
+| + time behind the winner, not just placing | 0.8246 |
+| + 1,400 races beyond the World Cup | **0.8255** |
+
+The last row is worth reading honestly. Scraping national championships,
+continental series and world championships across four seasons took the
+database from 346 races to 1,661 — and bought **0.0009**. Two reasons: only
+431 of 1,170 non-World-Cup races cleared the five-anchor filter, and the
+athletes who gain most from them are a minority of the pairs being scored.
+The field-strength discount then correctly limits how much those races count.
+
+It was worth doing to find that out, and it is a better outcome than a large
+unexplained gain would have been. But the money was in the tuning, not the
+data.
 
 The tuning is the more interesting half. Three constants were guesses, fitted
 on a validation season with the test season untouched:
