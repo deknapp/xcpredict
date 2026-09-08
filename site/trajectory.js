@@ -39,6 +39,9 @@
       if (opts.kind && r.kind !== opts.kind) { return; }
       if (opts.technique && r.technique !== opts.technique) { return; }
       if (opts.season && String(r.season) !== String(opts.season)) { return; }
+      // A weekend selection, when there is one, wins over the other filters:
+      // the user has named the races they want to look at.
+      if (opts.raceIds && !opts.raceIds[r.race_id]) { return; }
       out.push(r);
     });
     out.sort(function (a, b) { return (a.date || "").localeCompare(b.date || ""); });

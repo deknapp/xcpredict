@@ -655,6 +655,16 @@
         '<div class="list" id="t-results" style="max-height:150px"></div>' +
         '<div class="picked" id="t-picked"></div>' +
       "</div>" +
+      '<div class="panel">' +
+        "<h2>Race weekends</h2>" +
+        '<p class="sub">Leave all unticked to plot everything. Tick a few to ' +
+        "compare how the same skiers went at particular stops.</p>" +
+        '<div class="controls">' +
+          '<button class="pill" id="t-wknone">Clear all</button>' +
+          '<button class="pill" id="t-wkrecent">Last season only</button>' +
+        "</div>" +
+        '<div class="list" id="t-weekends" style="max-height:210px"></div>' +
+      "</div>" +
       '<div class="panel"><div id="t-chart"><div class="empty">Add a skier.</div></div></div>';
 
     var seasons = {};
@@ -676,7 +686,62 @@
       traj = D.athletes.filter(function (a) { return a.gender === "M"; })
                        .slice(0, 3).map(function (a) { return a.fis_code; });
     }
+    buildWeekendPicker();
     drawPicked(); drawTraj();
+  }
+
+
+  /* Race weekends the user has opted into. Empty means "all of them", which is
+     the right default: a chart that starts blank until you tick something is a
+     chart most people never see working. */
+  var trajWeekends = {};
+
+  function buildWeekendPicker() {
+    var weekends = Csv.weekendsFrom(D.races);
+    trajWeekendList = weekends;
+    el("t-weekends").innerHTML = weekends.map(function (w, i) {
+      return '<label class="row" style="cursor:pointer">' +
+        '<span><input type="checkbox" data-wk="' + i + '"' +
+        (trajWeekends[w.key] ? " checked" : "") + '> ' +
+        h(w.place) + " · " + h(w.start) +
+        (w.end !== w.start ? " – " + h(w.end.slice(5)) : "") + "</span>" +
+        '<span class="meta">' + w.n_races + " races</span></label>";
+    }).join("");
+
+    Array.prototype.forEach.call(el("t-weekends").querySelectorAll("[data-wk]"), function (n) {
+      n.addEventListener("change", function () {
+        var w = trajWeekendList[parseInt(n.dataset.wk, 10)];
+        if (n.checked) { trajWeekends[w.key] = w; } else { delete trajWeekends[w.key]; }
+        drawTraj();
+      });
+    });
+
+    el("t-wknone").addEventListener("click", function () {
+      trajWeekends = {}; buildWeekendPicker(); drawTraj();
+    });
+    el("t-wkrecent").addEventListener("click", function () {
+      trajWeekends = {};
+      var latest = Math.max.apply(null, D.races.map(function (r) { return r.season || 0; }));
+      weekends.forEach(function (w) {
+        var inSeason = D.races.some(function (r) {
+          return r.season === latest && w.race_ids.indexOf(r.race_id) !== -1;
+        });
+        if (inSeason) { trajWeekends[w.key] = w; }
+      });
+      buildWeekendPicker(); drawTraj();
+    });
+  }
+  var trajWeekendList = [];
+
+  /* Race ids the chart may draw, or null for "no restriction". */
+  function trajRaceFilter() {
+    var keys = Object.keys(trajWeekends);
+    if (!keys.length) { return null; }
+    var allowed = {};
+    keys.forEach(function (k) {
+      trajWeekends[k].race_ids.forEach(function (id) { allowed[id] = 1; });
+    });
+    return allowed;
   }
 
   function trajSearch() {
@@ -723,6 +788,7 @@
     }
     Promise.all(traj.map(loadAthlete)).then(function (people) {
       Trajectory.draw(el("t-chart"), people.map(function (a) { return { athlete: a }; }), {
+        raceIds: trajRaceFilter(),
         mode: el("t-mode").value,
         season: el("t-season").value,
         kind: el("t-kind").value,
@@ -754,6 +820,13 @@
           '<select id="f-tech"><option value="F">Free</option>' +
             '<option value="C">Classic</option></select>' +
         "</div>" +
+        '<div class="controls"><select id="f-scheme">' +
+          Object.keys(Fantasy.SCHEMES).map(function (k) {
+            return '<option value="' + k + '"' +
+              (k === Fantasy.RULES.scheme ? " selected" : "") + ">" +
+              h(Fantasy.SCHEMES[k].label) + "</option>";
+          }).join("") + "</select></div>" +
+        '<div class="note" id="f-schemenote"></div>' +
         '<button id="f-go" class="pill" style="padding:8px 16px;font-size:14px">Solve</button>' +
         '<div class="warn" style="margin-top:10px">Prices and scoring are ' +
         "<strong>estimates</strong> until Hoffman's real numbers can be read. " +
@@ -763,6 +836,14 @@
       "</div>" +
       '<div class="panel"><h2>Roster</h2><div id="f-out">' +
       '<div class="empty">Press solve.</div></div></div>';
+    function schemeNote() {
+      el("f-schemenote").textContent = Fantasy.SCHEMES[el("f-scheme").value].note;
+    }
+    el("f-scheme").addEventListener("change", function () {
+      Fantasy.RULES.scheme = el("f-scheme").value;
+      schemeNote();
+    });
+    schemeNote();
     el("f-go").addEventListener("click", solveFantasy);
   }
 

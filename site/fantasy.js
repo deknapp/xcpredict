@@ -19,6 +19,59 @@
 (function (global) {
   "use strict";
 
+  /* Four plausible shapes for how a fantasy game pays out, because the real
+   * rules will not be published until later in the year and the optimiser
+   * maximises whatever it is told points are. A wrong scoring rule does not
+   * produce a slightly wrong team, it produces a confidently wrong one -- so
+   * rather than bury one guess, these are switchable and the differences
+   * between them are visible.
+   *
+   * The one that matters most is how deep the payout goes. A scheme paying
+   * only the top ten makes stars the only thing worth buying; one paying the
+   * top fifty makes cheap consistent finishers valuable and fills the roster.
+   */
+  var SCHEMES = {
+    worldcup: {
+      label: "FIS World Cup points (top 30)",
+      note: "The actual World Cup table: 100 for a win, 80, 60, 50, 45, then " +
+            "down to 1 for 30th. The most likely shape for a game about World " +
+            "Cup racing, so it is the default.",
+      points: function (place) {
+        var table = [100, 80, 60, 50, 45, 40, 36, 32, 29, 26, 24, 22, 20, 18, 16,
+                     15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+        return place <= 30 ? table[place - 1] : 0;
+      }
+    },
+    decay: {
+      label: "Smooth decay (top 30)",
+      note: "100 for a win falling by 7% a place, nothing past 30th. Gentler " +
+            "at the front than the World Cup table, so second place is worth " +
+            "nearly as much as first.",
+      points: function (place) {
+        return place > 30 ? 0 : Math.round(100 * Math.pow(0.93, place - 1));
+      }
+    },
+    deep: {
+      label: "Pays deep (top 50)",
+      note: "Rewards finishing at all. Makes cheap, reliable skiers worth " +
+            "buying and tends to fill the roster rather than leaving slots " +
+            "empty -- worth trying to see how much the depth of the payout " +
+            "changes the answer.",
+      points: function (place) {
+        return place > 50 ? 0 : Math.max(1, Math.round(60 - place));
+      }
+    },
+    podium: {
+      label: "Top ten only",
+      note: "Brutal. Only the very front scores, so the optimiser buys stars " +
+            "and ignores everyone else. Included because it shows how sharply " +
+            "the best team depends on this one decision.",
+      points: function (place) {
+        return place > 10 ? 0 : Math.round(120 * Math.pow(0.75, place - 1));
+      }
+    }
+  };
+
   var RULES = {
     /* 200 against prices of 3-30 and sixteen roster slots. Chosen so the
      * problem is actually interesting: you can afford three or four of the
@@ -31,13 +84,11 @@
     maxWomen: 8,
     sharedBudget: true,   // false would give each roster half
 
-    /* Points for a finishing position. A guess at a common shape: steep at the
-     * front, nothing outside the top thirty. Replace wholesale when the real
-     * rules are known — the optimiser maximises whatever this returns, so a
-     * wrong scoring rule produces a confidently wrong team. */
+    /* Which scoring scheme is in force. See SCHEMES above. */
+    scheme: "worldcup",
+
     pointsForPlace: function (place) {
-      if (place > 30) { return 0; }
-      return Math.round(100 * Math.pow(0.93, place - 1));
+      return SCHEMES[RULES.scheme].points(place);
     },
 
     /* Estimated price, until the real ones exist. Anchored to the model's own
@@ -156,6 +207,7 @@
 
   global.Fantasy = {
     RULES: RULES,
+    SCHEMES: SCHEMES,
     solve: solve,
     expectedPoints: expectedPoints,
     costOfForcing: costOfForcing
