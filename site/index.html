@@ -99,6 +99,10 @@
     distance, distance in km, and how long ago. A 10&nbsp;km skate leans on
     other 10&nbsp;km skates, then 15&nbsp;km skates, then 10&nbsp;km classics,
     and barely on sprints. A small ranking model is fitted on those summaries.</p>
+    <p><strong>Men and women are never mixed.</strong> They do not start
+    together, so a combined field is not a race and the model does not rank
+    one. Gender is taken from the races each skier actually started — no
+    athlete in this database has appeared in both.</p>
     <p><strong>The controls are real.</strong> Ticking a filter recomputes every
     athlete's features in your browser and re-scores the field — it is not
     switching between precomputed answers. The model is eleven numbers
@@ -186,6 +190,8 @@
         "in your browser. Every control recomputes the prediction from each " +
         "skier's actual results.</p>" +
         '<div class="controls">' +
+          '<select id="p-gender"><option value="M">Men</option>' +
+            '<option value="W">Women</option></select>' +
           '<select id="p-kind"><option value="sprint">Sprint</option>' +
             '<option value="distance" selected>Distance</option></select>' +
           '<select id="p-tech"><option value="C">Classic</option>' +
@@ -199,6 +205,10 @@
           '<label class="chk"><input type="checkbox" id="p-sametech"> Only this technique</label>' +
         "</div>" +
         '<div class="note" id="p-explain"></div>' +
+        '<div class="note"><strong>Predictions cover 2023–2026.</strong> ' +
+        "They will be refreshed ahead of each race weekend of the 2026–27 " +
+        "season as results come in, so a skier's form here reflects the last " +
+        "race in the database, not necessarily their most recent one.</div>" +
       "</div>" +
       '<div class="panel">' +
         "<h2>Field</h2>" +
@@ -211,23 +221,40 @@
     ["p-kind", "p-tech", "p-len", "p-wc", "p-samekind", "p-sametech"].forEach(function (id) {
       el(id).addEventListener("change", predict);
     });
+    // Changing gender empties the field rather than filtering it: a race is
+    // one or the other, and silently dropping half the skiers someone chose
+    // would be worse than making them pick again.
+    el("p-gender").addEventListener("change", function () {
+      chosen = defaultField(el("p-gender").value);
+      drawField(); searchField(); predict();
+    });
     el("p-search").addEventListener("input", searchField);
 
-    if (!chosen.length) {
-      // A default field so the page does something on arrival: the most
-      // experienced World Cup skiers in the database.
-      chosen = D.athletes.slice(0, 10).map(function (a) { return a.fis_code; });
-    }
+    if (!chosen.length) { chosen = defaultField(el("p-gender").value); }
     drawField();
     searchField();
     predict();
   }
 
+  /* The most experienced World Cup skiers of one gender, so the page does
+     something sensible on arrival. */
+  function defaultField(gender) {
+    return D.athletes.filter(function (a) { return a.gender === gender; })
+                     .slice(0, 10)
+                     .map(function (a) { return a.fis_code; });
+  }
+
   function searchField() {
     var q = (el("p-search") ? el("p-search").value : "").trim().toLowerCase();
     if (!q) { el("p-results").innerHTML = ""; return; }
+    // Only skiers of the selected gender are offered. Men and women never
+    // start together, so a mixed field is not a race and the model has no
+    // business ranking one.
+    var gender = el("p-gender").value;
     var hits = D.athletes.filter(function (a) {
-      return a.name.toLowerCase().indexOf(q) !== -1 && chosen.indexOf(a.fis_code) === -1;
+      return a.gender === gender &&
+             a.name.toLowerCase().indexOf(q) !== -1 &&
+             chosen.indexOf(a.fis_code) === -1;
     }).slice(0, 12);
     el("p-results").innerHTML = hits.map(function (a) {
       return '<div class="row" data-add="' + a.fis_code + '"><span>' + h(a.name) +
@@ -347,22 +374,30 @@
         "<h3>Athletes</h3>" +
         '<p class="sub">' + D.athletes.length + " skiers who have started a World Cup, " +
         "with every result from 2023–2026 and what the model thinks they are best at.</p>" +
-        '<input type="search" id="a-search" placeholder="Search by name or nation">' +
+        '<div class="controls">' +
+          '<input type="search" id="a-search" placeholder="Search by name or nation" style="flex:1">' +
+          '<select id="a-gender"><option value="">Men and women</option>' +
+            '<option value="M">Men</option><option value="W">Women</option></select>' +
+        "</div>" +
       "</div>" +
       '<div class="panel"><div class="list" id="a-list" style="max-height:560px"></div></div>';
     el("a-search").addEventListener("input", drawAthletes);
+    el("a-gender").addEventListener("change", drawAthletes);
     drawAthletes();
   }
 
   function drawAthletes() {
     var q = (el("a-search") ? el("a-search").value : "").trim().toLowerCase();
+    var g = el("a-gender") ? el("a-gender").value : "";
     var hits = D.athletes.filter(function (a) {
+      if (g && a.gender !== g) { return false; }
       if (!q) { return true; }
       return (a.name + " " + (a.nation || "")).toLowerCase().indexOf(q) !== -1;
     }).slice(0, 300);
     el("a-list").innerHTML = hits.map(function (a) {
       return '<div class="row" data-go="' + a.fis_code + '">' +
-        "<span>" + h(a.name) + ' <span class="nat">' + h(a.nation || "") + "</span>" +
+        "<span>" + h(a.name) + ' <span class="nat">' + h(a.nation || "") +
+        (a.gender ? " · " + (a.gender === "M" ? "Men" : "Women") : "") + "</span>" +
         (a.best_event ? ' <span class="tag">' + h(a.best_event) + "</span>" : "") + "</span>" +
         '<span class="meta">' + a.wc_starts + " WC · " + a.wins + " wins · " +
         a.podiums + " podiums</span></div>";
@@ -392,6 +427,7 @@
       el("view").innerHTML =
         '<div class="panel">' +
           "<h3>" + h(a.name) + ' <span class="nat">' + h(a.nation || "") +
+          (a.gender ? " · " + (a.gender === "M" ? "Men" : "Women") : "") +
           (a.birth_year ? " · b. " + a.birth_year : "") + "</span></h3>" +
           '<div style="margin:14px 0 4px">' +
             stat("World Cup starts", a.wc_starts) +

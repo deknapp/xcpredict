@@ -52,6 +52,11 @@ class AthleteRecord:
     nation: Optional[str]
     birth_year: Optional[int]
     results: List[dict]
+    #: "M", "W" or None. Taken from the races they actually started rather
+    #: than from any athlete field, because FIS does not publish one here and
+    #: the races do. Unambiguous in practice: no athlete in this database has
+    #: ever appeared in both a men's and a women's race.
+    gender: Optional[str] = None
 
     @property
     def wc_starts(self) -> int:
@@ -62,6 +67,7 @@ class AthleteRecord:
             "fis_code": self.fis_code,
             "name": self.name,
             "nation": self.nation,
+            "gender": self.gender,
             "birth_year": self.birth_year,
             "n_results": len(self.results),
             "wc_starts": self.wc_starts,
@@ -104,6 +110,7 @@ def collect(conn, *, only_with_wc_start: bool = True) -> Dict[str, AthleteRecord
                 wc_starters.add(code)
             by_athlete.setdefault(code, []).append({
                 "race_id": race_id,
+                "gender": race["gender"],
                 "date": race_date.isoformat() if race_date else None,
                 "season": race["season"],
                 "place": race["place"],
@@ -125,12 +132,14 @@ def collect(conn, *, only_with_wc_start: bool = True) -> Dict[str, AthleteRecord
             continue
         person = people.get(code)
         results.sort(key=lambda r: (r["date"] or "", r["race_id"]))
+        genders = {r["gender"] for r in results if r["gender"] in ("M", "W")}
         records[code] = AthleteRecord(
             fis_code=code,
             name=person["name"] if person else code,
             nation=person["nation"] if person else None,
             birth_year=person["birth_year"] if person else None,
             results=results,
+            gender=genders.pop() if len(genders) == 1 else None,
         )
 
     log.info("collected %d athletes with a World Cup start", len(records))
@@ -241,6 +250,7 @@ def write_athlete_data(
             "fis_code": code,
             "name": record.name,
             "nation": record.nation,
+            "gender": record.gender,
             "n_results": len(record.results),
             "wc_starts": record.wc_starts,
             "wins": wins,
