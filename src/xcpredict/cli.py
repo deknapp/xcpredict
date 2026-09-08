@@ -330,6 +330,8 @@ def cmd_evaluate(args) -> int:
 
 
 def cmd_export(args) -> int:
+    from . import athletes as athletes_mod
+
     conn, samples = _samples(args)
     model = ml.RankerModel.load(Path(args.model))
     lookup = db.athlete_names(conn)
@@ -344,8 +346,18 @@ def cmd_export(args) -> int:
         samples, model, names, nations, comparison,
         out_dir=Path(args.out), holdout_seasons=args.holdout,
     )
+    # Athletes as first-class objects, with their whole history shipped raw so
+    # the page can recompute the kernel under the reader's own filters rather
+    # than only showing what was decided here.
+    records = athletes_mod.collect(conn)
+    people = athletes_mod.write_athlete_data(records, Path(args.out))
+
+    # The model itself, so the browser can score a field without a server.
+    model.save(Path(args.out) / "model.json")
+
     print(f"wrote {summary['races']} races to {summary['out_dir']} "
           f"({summary['megabytes']} MB)")
+    print(f"wrote {people['athletes']} athletes ({people['megabytes']} MB)")
     return 0
 
 
